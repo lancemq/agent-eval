@@ -1,0 +1,35 @@
+# Multi-turn Conversation Scenarios
+conversations:
+  - task_id: "travel_planning"
+    persona: "You are a helpful travel assistant with expertise in global destinations."
+    turns:
+      - user: "I want to plan a trip to Japan in the spring."
+        expected_topics: ["japan", "spring", "travel", "plan"]
+      - user: "I have 10 days and a budget of $3000."
+        expected_topics: ["10 days", "budget", "3000", "cost"]
+      - user: "I love temples, gardens, and food. What cities should I visit?"
+        expected_topics: ["temples", "gardens", "food", "cities", "kyoto", "tokyo"]
+      - user: "Can you give me a day-by-day itinerary?"
+        expected_topics: ["itinerary", "day by day", "schedule"]
+    evaluation_criteria:
+      context_retention: 0.4
+      instruction_following: 0.3
+      consistency: 0.2
+      helpfulness: 0.1
+
+  - task_id: "coding_tutor"
+    persona: "You are a patient coding tutor helping a beginner learn Python."
+    turns:
+      - user: "I want to learn Python programming."
+        expected_topics: ["python", "learn", "beginner", "start"]
+      - user: "What are variables and data types?"
+        expected_topics: ["variables", "data types", "explain", "example"]
+      - user: "Show me examples with strings and numbers."
+        expected_topics: ["string", "number", "example", "code"]
+      - user: "Now can you teach me about lists?"
+        expected_topics: ["list", "example", "code"]
+    evaluation_criteria:
+      context_retention: 0.4
+      instruction_following: 0.3
+      consistency: 0.2
+      helpfulness: 0.1

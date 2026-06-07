@@ -1,0 +1,96 @@
+# AgentEval Configuration Example
+
+orchestrator:
+  max_workers: 4
+  queue_backend: "memory"
+  storage:
+    type: "json"
+    output_dir: "./eval_results"
+  log_level: "INFO"
+
+agent:
+  type: "callable"
+  module: "my_agent:MyAgent"
+  config:
+    model: "gpt-4o-mini"
+    temperature: 0.0
+
+plugins:
+  mmlu:
+    enabled: true
+    subset: "all"
+    split: "test"
+    judge:
+      type: "llm"
+      model: "gpt-4o-mini"
+      rubric: "Evaluate if the answer matches the correct choice."
+      use_cot: true
+      n_samples: 1
+
+  gsm8k:
+    enabled: true
+    split: "test"
+    judge:
+      type: "numeric_answer"
+
+  humaneval:
+    enabled: true
+    timeout: 30
+    judge:
+      type: "code_execution"
+
+  tool_use:
+    enabled: true
+    scenario_file: "configs/scenarios/tool_use.yaml"
+    sandbox: "local"
+    max_turns: 10
+    judges:
+      - type: "tool_correctness"
+        name: "tool_correctness"
+      - type: "efficiency"
+        name: "efficiency"
+      - type: "robustness"
+        name: "robustness"
+
+  multi_turn:
+    enabled: true
+    conversation_file: "configs/scenarios/multi_turn.yaml"
+    max_turns: 10
+    judges:
+      - type: "conversation_quality"
+        name: "conversation_quality"
+      - type: "context_retention"
+        name: "context_retention"
+      - type: "consistency"
+        name: "consistency"
+
+  coding:
+    enabled: true
+    task_file: "configs/scenarios/coding.yaml"
+    timeout: 30
+    judges:
+      - type: "code_correctness"
+        name: "correctness"
+      - type: "code_style"
+        name: "style"
+      - type: "code_efficiency"
+        name: "efficiency"
+
+  jailbreak:
+    enabled: true
+    attack_config: "configs/attacks/jailbreak.yaml"
+
+  injection:
+    enabled: true
+    injection_file: "configs/attacks/injection.yaml"
+
+  bias:
+    enabled: true
+    bias_file: "configs/attacks/bias.yaml"
+
+report:
+  formats: ["json", "html", "markdown"]
+  output_dir: "./eval_results"
+
+eval_config:
+  priority: "normal"
