@@ -21,6 +21,11 @@ AI Agent 评测框架 — 可插拔、多维度、多评判器交叉验证。
 ## 安装
 
 ```bash
+# 推荐：先创建虚拟环境
+python3 -m venv venv
+source venv/bin/activate   # Linux/macOS
+# venv\Scripts\activate    # Windows
+
 # 从源码安装
 git clone <repo-url>
 cd agent-eval
@@ -39,7 +44,15 @@ pip install -e ".[dev]"        # 开发工具 (pytest, ruff)
 验证安装：
 
 ```bash
+# 方式一：直接使用命令行（需在 PATH 中）
 agent-eval list
+
+# 方式二：通过 Python 模块运行
+python -m agent_eval list
+
+# 方式三：如果命令找不到，检查 Python 脚本目录是否在 PATH 中
+# macOS: ~/Library/Python/3.x/bin  或  venv/bin/
+# Linux:  ~/.local/bin             或  venv/bin/
 ```
 
 预期输出：
