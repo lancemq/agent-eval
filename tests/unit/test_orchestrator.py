@@ -1,5 +1,6 @@
 """Tests for the orchestrator."""
 
+import pytest
 from unittest.mock import MagicMock
 from agent_eval.orchestrator import (
     EvaluationOrchestrator,
@@ -67,6 +68,108 @@ class FailingPlugin(BasePlugin):
             passed=False,
             execution_time_ms=0,
         )
+
+
+@register_plugin
+class ConfigPlugin(BasePlugin):
+    name = "config_plugin"
+    evaluation_type = EvaluationType.CUSTOM
+    supported_dimensions = ["config"]
+
+    def setup(self, config):
+        self.config_value = config["value"]
+
+    def generate_tasks(self, context):
+        return [{"id": "config"}]
+
+    def execute_task(self, task, context):
+        return self.config_value
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=1.0 if output == "expected" else 0.0,
+            raw_score={"output": output},
+            details={},
+            artifacts=[],
+            passed=output == "expected",
+            execution_time_ms=0,
+            task_id=task["id"],
+        )
+
+
+@register_plugin
+class StatefulPlugin(BasePlugin):
+    name = "stateful_plugin"
+    evaluation_type = EvaluationType.CUSTOM
+    supported_dimensions = ["state"]
+    teardown_count = 0
+
+    def setup(self, config):
+        self.seen = getattr(self, "seen", 0) + 1
+
+    def generate_tasks(self, context):
+        return [{"id": "state"}]
+
+    def execute_task(self, task, context):
+        return self.seen
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=1.0 if output == 1 else 0.0,
+            raw_score={"seen": output},
+            details={},
+            artifacts=[],
+            passed=output == 1,
+            execution_time_ms=0,
+            task_id=task["id"],
+        )
+
+    def teardown(self):
+        type(self).teardown_count += 1
+
+
+@register_plugin
+class SetupFailingPlugin(BasePlugin):
+    name = "setup_failing_plugin"
+    evaluation_type = EvaluationType.CUSTOM
+
+    def setup(self, config):
+        raise RuntimeError("setup failed")
+
+    def generate_tasks(self, context):
+        return []
+
+    def execute_task(self, task, context):
+        return None
+
+    def evaluate(self, task, output, context):
+        raise AssertionError("should not evaluate")
+
+
+@register_plugin
+class GenerateFailingPlugin(BasePlugin):
+    name = "generate_failing_plugin"
+    evaluation_type = EvaluationType.CUSTOM
+    teardown_count = 0
+
+    def setup(self, config):
+        pass
+
+    def generate_tasks(self, context):
+        raise RuntimeError("generate failed")
+
+    def execute_task(self, task, context):
+        return None
+
+    def evaluate(self, task, output, context):
+        raise AssertionError("should not evaluate")
+
+    def teardown(self):
+        type(self).teardown_count += 1
 
 
 def test_orchestrator_initialization():
@@ -200,6 +303,61 @@ def test_task_queue_retry():
     task = queue.get(task_id)
     assert task.status == TaskStatus.PENDING
     assert task.retries == 1
+
+
+def test_plugin_config_is_passed_to_setup():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator()
+    report = orch.run_evaluation(
+        agent,
+        ["config_plugin"],
+        plugin_configs={"config_plugin": {"value": "expected"}},
+    )
+
+    assert report.plugin_results["config_plugin"]["passed"] == 1
+    assert report.task_results["config_plugin"][0]["raw_score"] == {"output": "expected"}
+
+
+def test_plugins_are_new_instances_per_run():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator()
+    first = orch.run_evaluation(agent, ["stateful_plugin"])
+    second = orch.run_evaluation(agent, ["stateful_plugin"])
+
+    assert first.task_results["stateful_plugin"][0]["raw_score"] == {"seen": 1}
+    assert second.task_results["stateful_plugin"][0]["raw_score"] == {"seen": 1}
+
+
+def test_teardown_runs_when_evaluation_fails_after_setup():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+    before = GenerateFailingPlugin.teardown_count
+
+    orch = EvaluationOrchestrator()
+    with pytest.raises(RuntimeError, match="generate failed"):
+        orch.run_evaluation(agent, ["generate_failing_plugin"])
+
+    assert GenerateFailingPlugin.teardown_count == before + 1
+
+
+def test_task_results_are_serialized_and_restored():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator()
+    report = orch.run_evaluation(agent, ["mock_plugin"])
+    restored = EvaluationReport.from_dict(report.to_dict())
+
+    assert len(restored.task_results["mock_plugin"]) == 3
+    assert restored.task_results["mock_plugin"][0]["plugin_name"] == "mock_plugin"
 
 
 def test_evaluation_report():

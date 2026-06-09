@@ -47,7 +47,7 @@ class BasePlugin(ABC):
     name: str = ""
     version: str = "1.0"
     evaluation_type: EvaluationType = EvaluationType.CUSTOM
-    supported_dimensions: List[str] = field(default_factory=list)
+    supported_dimensions: List[str] = []
     description: str = ""
     
     def __init__(self):
@@ -108,13 +108,11 @@ class PluginRegistry:
     
     @classmethod
     def get(cls, name: str) -> BasePlugin:
-        """Get or create plugin instance."""
+        """Create a plugin instance."""
         with cls._lock:
-            if name not in cls._instances:
-                if name not in cls._plugins:
-                    raise ValueError(f"Plugin '{name}' not found. Available: {list(cls._plugins.keys())}")
-                cls._instances[name] = cls._plugins[name]()
-            return cls._instances[name]
+            if name not in cls._plugins:
+                raise ValueError(f"Plugin '{name}' not found. Available: {list(cls._plugins.keys())}")
+            return cls._plugins[name]()
     
     @classmethod
     def get_class(cls, name: str) -> Type[BasePlugin]:

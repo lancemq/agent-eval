@@ -58,7 +58,8 @@ def cmd_run(args: argparse.Namespace) -> None:
     orch_config.storage["output_dir"] = args.output
 
     orchestrator = EvaluationOrchestrator(orch_config)
-    report = orchestrator.run_evaluation(agent, plugin_names, config.eval_config)
+    plugin_configs = {name: pc.config for name, pc in config.plugins.items()}
+    report = orchestrator.run_evaluation(agent, plugin_names, config.eval_config, plugin_configs)
 
     generator = ReportGenerator(args.output)
     generated = generator.generate(report, config.report.get("formats", ["json", "html", "markdown"]))

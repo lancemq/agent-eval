@@ -213,6 +213,7 @@ class EvaluationReport:
         plugin_results: Dict[str, Any],
         metadata: Dict[str, Any],
         artifacts: List[Any] = None,
+        task_results: Dict[str, List[Dict[str, Any]]] = None,
     ):
         self.run_id = run_id
         self.timestamp = timestamp
@@ -222,6 +223,7 @@ class EvaluationReport:
         self.plugin_results = plugin_results
         self.metadata = metadata
         self.artifacts = artifacts or []
+        self.task_results = task_results or {}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -230,6 +232,7 @@ class EvaluationReport:
             "agent": {"name": self.agent_name, "version": self.agent_version},
             "summary": self.summary,
             "plugin_results": self.plugin_results,
+            "task_results": self.task_results,
             "metadata": self.metadata,
             "artifacts_count": len(self.artifacts),
         }
@@ -245,4 +248,5 @@ class EvaluationReport:
             summary=data["summary"],
             plugin_results=data["plugin_results"],
             metadata=data.get("metadata", {}),
+            task_results=data.get("task_results", {}),
         )

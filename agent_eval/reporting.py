@@ -1,5 +1,6 @@
 """Reporting and visualization module."""
 
+import html
 import json
 import os
 from typing import Dict, List
@@ -56,7 +57,7 @@ class ReportGenerator:
         for dim, score in report.summary.get("dimensions", {}).items():
             dim_rows += f"""
             <tr>
-                <td>{dim}</td>
+                <td>{html.escape(str(dim))}</td>
                 <td><div class="bar-container"><div class="bar" style="width:{score*100:.0f}%">{score:.2f}</div></div></td>
             </tr>"""
 
@@ -64,17 +65,22 @@ class ReportGenerator:
         for name, pr in report.plugin_results.items():
             plugin_rows += f"""
             <tr>
-                <td>{name}</td>
-                <td>{pr.get('type', '')}</td>
+                <td>{html.escape(str(name))}</td>
+                <td>{html.escape(str(pr.get('type', '')))}</td>
                 <td><div class="bar-container"><div class="bar" style="width:{pr.get('score', 0)*100:.0f}%">{pr.get('score', 0):.2f}</div></div></td>
                 <td>{pr.get('passed', 0)}/{pr.get('total', 0)}</td>
             </tr>"""
+
+        run_id = html.escape(str(report.run_id))
+        agent_name = html.escape(str(report.agent_name))
+        agent_version = html.escape(str(report.agent_version))
+        timestamp = html.escape(str(report.timestamp))
 
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AgentEval Report - {report.run_id[:8]}</title>
+    <title>AgentEval Report - {run_id[:8]}</title>
     <style>
         body {{ font-family: -apple-system, system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; background: #f5f5f5; }}
         h1, h2, h3 {{ color: #1a1a1a; }}
@@ -93,9 +99,9 @@ class ReportGenerator:
 <body>
     <div class="card">
         <h1>AgentEval Report</h1>
-        <p class="meta">Run ID: {report.run_id}</p>
-        <p class="meta">Agent: {report.agent_name} v{report.agent_version}</p>
-        <p class="meta">Time: {report.timestamp}</p>
+        <p class="meta">Run ID: {run_id}</p>
+        <p class="meta">Agent: {agent_name} v{agent_version}</p>
+        <p class="meta">Time: {timestamp}</p>
     </div>
 
     <div class="card">

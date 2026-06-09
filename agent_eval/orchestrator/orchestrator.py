@@ -35,9 +35,11 @@ class EvaluationOrchestrator:
         agent: AgentUnderTest,
         plugin_names: List[str],
         eval_config: Dict[str, Any] = None,
+        plugin_configs: Dict[str, Dict[str, Any]] = None,
     ) -> EvaluationReport:
         """Run a complete evaluation pipeline."""
         eval_config = eval_config or {}
+        plugin_configs = plugin_configs or {}
         run_id = str(uuid.uuid4())
         timestamp = datetime.utcnow().isoformat() + "Z"
 
@@ -60,21 +62,22 @@ class EvaluationOrchestrator:
 
         start_time = time.time()
 
-        plugins = self._init_plugins(plugin_names, eval_config)
-        all_results = self._execute_plugins(plugins, context)
-        report = self._generate_report(run_id, timestamp, agent, context, all_results, plugins)
+        plugins = []
+        try:
+            plugins = self._init_plugins(plugin_names, plugin_configs)
+            all_results = self._execute_plugins(plugins, context)
+            report = self._generate_report(run_id, timestamp, agent, context, all_results, plugins)
 
-        elapsed = time.time() - start_time
-        self.logger.info(f"Evaluation completed in {elapsed:.2f}s. Score: {report.summary.get('overall_score', 0):.3f}")
+            elapsed = time.time() - start_time
+            self.logger.info(f"Evaluation completed in {elapsed:.2f}s. Score: {report.summary.get('overall_score', 0):.3f}")
 
-        saved_path = self.result_store.save(report)
-        self.logger.info(f"Report saved: {saved_path}")
+            saved_path = self.result_store.save(report)
+            self.logger.info(f"Report saved: {saved_path}")
 
-        self.hooks.trigger("evaluation_complete", report)
-
-        self._teardown_plugins(plugins)
-
-        return report
+            self.hooks.trigger("evaluation_complete", report)
+            return report
+        finally:
+            self._teardown_plugins(plugins)
 
     def _init_plugins(self, plugin_names: List[str], eval_config: Dict) -> List[BasePlugin]:
         plugins = []
@@ -211,6 +214,11 @@ class EvaluationOrchestrator:
             "num_plugins": len(plugins),
         }
 
+        task_results = {
+            plugin_name: [self._serialize_eval_result(result) for result in results]
+            for plugin_name, results in all_results.items()
+        }
+
         return EvaluationReport(
             run_id=run_id,
             timestamp=timestamp,
@@ -219,7 +227,22 @@ class EvaluationOrchestrator:
             summary=summary,
             plugin_results=plugin_results_summary,
             metadata=context.metadata,
+            task_results=task_results,
         )
+
+    def _serialize_eval_result(self, result: EvalResult) -> Dict[str, Any]:
+        return {
+            "plugin_name": result.plugin_name,
+            "evaluation_type": result.evaluation_type.value,
+            "score": result.score,
+            "raw_score": result.raw_score,
+            "details": result.details,
+            "artifacts": result.artifacts,
+            "passed": result.passed,
+            "execution_time_ms": result.execution_time_ms,
+            "task_id": result.task_id,
+            "error": result.error,
+        }
 
     def _teardown_plugins(self, plugins: List[BasePlugin]) -> None:
         for plugin in plugins:
