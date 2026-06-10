@@ -3,7 +3,7 @@
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List
 
@@ -41,7 +41,7 @@ class EvaluationOrchestrator:
         eval_config = eval_config or {}
         plugin_configs = plugin_configs or {}
         run_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
         context = EvalContext(
             agent_under_test=agent,
@@ -253,6 +253,7 @@ class EvaluationOrchestrator:
             "execution_time_ms": result.execution_time_ms,
             "task_id": result.task_id,
             "error": result.error,
+            "dimension_scores": result.dimension_scores,
         }
 
     def _teardown_plugins(self, plugins: List[BasePlugin]) -> None:

@@ -59,5 +59,12 @@ Documentation = "https://agent-eval.readthedocs.io"
 [project.scripts]
 agent-eval = "agent_eval.cli.main:main"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+]
+
 [tool.setuptools.packages.find]
 include = ["agent_eval", "agent_eval.*"]

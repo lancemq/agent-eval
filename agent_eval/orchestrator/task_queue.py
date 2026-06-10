@@ -80,7 +80,7 @@ class TaskQueue:
         p = priority_map.get(priority, TaskPriority.NORMAL)
         task_ids = []
         for task in tasks:
-            plugin_name = task.pop("_plugin", "")
+            plugin_name = task.get("_plugin", "")
             task_id = self.enqueue(task, plugin_name=plugin_name, priority=p)
             task_ids.append(task_id)
         return task_ids

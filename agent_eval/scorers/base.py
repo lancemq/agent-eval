@@ -54,10 +54,9 @@ Score format: SCORE: <number>
 Reason format: REASON: <text>"""
 
     def _call_llm(self, prompt: str, model: str = "gpt-4o-mini") -> str:
-        import openai
-        client = openai.OpenAI()
-        response = client.chat.completions.create(
-            model=model,
+        from agent_eval.llm_client import LLMClient
+        client = LLMClient(model=model, timeout=60.0, max_retries=3)
+        response = client.chat(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             max_tokens=500,

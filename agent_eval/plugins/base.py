@@ -139,9 +139,6 @@ class PluginRegistry:
     def clear(cls) -> None:
         """Clear registry (mainly for testing)."""
         with cls._lock:
-            for instance in cls._instances.values():
-                instance.teardown()
-            cls._instances.clear()
             cls._plugins.clear()
 
 

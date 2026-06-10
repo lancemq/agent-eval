@@ -20,6 +20,35 @@ AI Agent 评测框架 — 可插拔、多维度、多评判器交叉验证。
 
 ## 安装
 
+### 方式一：使用 uv（推荐）
+
+[uv](https://docs.astral.sh/uv/) 是一个极速的 Python 包管理器，支持 lock 文件和虚拟环境自动管理。
+
+```bash
+# 1. 安装 uv（如未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. 克隆仓库并进入目录
+git clone <repo-url>
+cd agent-eval
+
+# 3. 同步依赖（自动创建虚拟环境并安装）
+#    基础依赖
+uv sync
+
+#    含全部可选依赖（OpenAI、Datasets、Docker）
+uv sync --extra all
+
+#    含开发依赖
+uv sync --extra all --group dev
+
+# 4. 运行命令
+uv run agent-eval list
+uv run pytest tests/unit/ -q
+```
+
+### 方式二：使用 pip
+
 ```bash
 # 推荐：先创建虚拟环境
 python3 -m venv venv
@@ -50,9 +79,8 @@ agent-eval list
 # 方式二：通过 Python 模块运行
 python -m agent_eval list
 
-# 方式三：如果命令找不到，检查 Python 脚本目录是否在 PATH 中
-# macOS: ~/Library/Python/3.x/bin  或  venv/bin/
-# Linux:  ~/.local/bin             或  venv/bin/
+# 方式三：uv 运行（无需手动激活虚拟环境）
+uv run agent-eval list
 ```
 
 预期输出：
@@ -252,7 +280,7 @@ attacks:
 | `gsm8k` | mathematical_reasoning, multi_step_reasoning | gsm8k | 小学数学应用题 |
 | `humaneval` | code_generation, correctness | openai_humaneval | 手写函数代码生成 + 真实执行测试 |
 
-**依赖**：`pip install datasets`
+**依赖**：`pip install datasets` 或 `uv pip install datasets`
 
 ### 动态评测 (Dynamic)
 

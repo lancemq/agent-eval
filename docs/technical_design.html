@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AgentEval Technical Design</title>
+<style>
+body { font-family: -apple-system, system-ui, sans-serif; max-width: 900px; margin: 0 auto; padding: 24px; line-height: 1.6; color: #1a1a1a; background: #f8f9fa; }
+h1 { border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+h2 { border-bottom: 1px solid #ddd; padding-bottom: 6px; margin-top: 32px; }
+h3 { margin-top: 24px; }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; background: #fff; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e5e5e5; }
+th { background: #fafafa; font-weight: 600; }
+tr:hover { background: #f5f5f5; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+pre { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; overflow-x: auto; }
+pre code { background: transparent; padding: 0; }
+blockquote { border-left: 4px solid #2563eb; margin: 0; padding-left: 16px; color: #555; }
+hr { border: none; border-top: 1px solid #ddd; margin: 32px 0; }
+</style>
+</head>
+<body>
+<h1>AgentEval Technical Development Design Document</h1>
+<h2>1. Overview</h2>
+<p>AgentEval is a pluggable, extensible evaluation framework for AI agents. It supports four evaluation types (Benchmark, Dynamic, Adversarial, Custom) and provides a unified pipeline for task generation, execution, judging, and reporting.</p>
+<p><strong>Design Goals:</strong>
+- <strong>Modularity</strong>: Every evaluation domain is a plugin; core framework is domain-agnostic.
+- <strong>Extensibility</strong>: New plugins, judges, and scorers can be added without modifying core code.
+- <strong>Reliability</strong>: Retry logic, timeout handling, error isolation, and teardown guarantees.
+- <strong>Observability</strong>: Structured reports with dimension-level scoring, micro/macro aggregation, and multi-format output.</p>
+<hr />
+<h2>2. Architecture Overview</h2>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                        CLI / API                             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────┐
+│              EvaluationOrchestrator                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │ TaskQueue   │  │ HookManager │  │ ResultStore         │  │
+│  │ (priority)  │  │ (lifecycle) │  │ (JSON/SQLite/Mem)   │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+         ┌─────────────┼─────────────┐
+         │             │             │
+┌────────▼──┐  ┌──────▼────┐  ┌─────▼──────┐
+│ Benchmark │  │ Dynamic   │  │ Adversarial│
+│ Plugins   │  │ Plugins   │  │ Plugins    │
+│ (MMLU,    │  │ (Coding,  │  │ (Jailbreak,│
+│ GSM8K,    │  │ ToolUse,  │  │ Injection, │
+│ HumanEval)│  │ MultiTurn)│  │ Bias)      │
+└─────┬─────┘  └─────┬─────┘  └─────┬──────┘
+      │              │              │
+      └──────────────┼──────────────┘
+                     │
+         ┌───────────▼────────────┐
+         │    AgentUnderTest      │
+         │  (OpenAIAgent /        │
+         │   CallableAgent)       │
+         └───────────┬────────────┘
+                     │
+         ┌───────────▼────────────┐
+         │      LLMClient         │
+         │  (retry + timeout)     │
+         └────────────────────────┘
+</code></pre>
+<hr />
+<h2>3. Core Components</h2>
+<h3>3.1 EvaluationOrchestrator</h3>
+<p><strong>File:</strong> <code>agent_eval/orchestrator/orchestrator.py</code></p>
+<p>The orchestrator is the central controller. It manages the full evaluation lifecycle:</p>
+<ol>
+<li><strong>Initialize plugins</strong> (<code>_init_plugins</code>): Creates fresh plugin instances per run, passes plugin-specific config, calls <code>setup()</code>.</li>
+<li><strong>Generate &amp; enqueue tasks</strong> (<code>_execute_plugins</code>): Each plugin generates its task list; tasks are enqueued into <code>TaskQueue</code> with priority.</li>
+<li><strong>Parallel execution</strong> (<code>ThreadPoolExecutor</code>): Workers dequeue tasks, call <code>plugin.execute_task()</code> and <code>plugin.evaluate()</code>.</li>
+<li><strong>Report generation</strong> (<code>_generate_report</code>): Aggregates results, computes micro/macro scores and dimension breakdowns.</li>
+<li><strong>Teardown</strong> (<code>finally</code> block): Guarantees <code>plugin.teardown()</code> is called even if evaluation fails.</li>
+</ol>
+<p><strong>Key Design Decisions:</strong>
+- <strong>Instance isolation</strong>: <code>PluginRegistry.get()</code> creates a new instance every time. This prevents state leakage between runs.
+- <strong>Config per plugin</strong>: <code>plugin_configs</code> dict maps plugin name to its config, allowing heterogeneous plugin configurations in a single run.
+- <strong>Micro vs Macro scoring</strong>:
+  - <code>micro_score</code>: Task-weighted average (each task contributes equally to the total).
+  - <code>macro_score</code>: Plugin-weighted average (each plugin contributes equally, regardless of task count).
+  - <code>overall_score</code> defaults to <code>micro_score</code> for benchmark fairness.</p>
+<h3>3.2 Plugin System</h3>
+<p><strong>File:</strong> <code>agent_eval/plugins/base.py</code></p>
+<p><strong>BasePlugin</strong> defines the contract:
+- <code>setup(config)</code>: Load datasets, initialize judges, configure environments.
+- <code>generate_tasks(context)</code>: Return list of task dicts.
+- <code>execute_task(task, context)</code>: Interact with <code>AgentUnderTest</code>, return raw output.
+- <code>evaluate(task, output, context)</code>: Judge output, return <code>EvalResult</code>.
+- <code>teardown()</code>: Cleanup resources.</p>
+<p><strong>PluginRegistry</strong> uses a class-level dict with thread-safe locking (<code>threading.Lock</code>). Registration is via <code>@register_plugin</code> decorator.</p>
+<p><strong>Evaluation Types:</strong>
+| Type | Purpose | Example |
+|------|---------|---------|
+| BENCHMARK | Fixed dataset, deterministic scoring | MMLU, GSM8K, HumanEval |
+| DYNAMIC | Interactive, multi-turn, sandboxed | Coding, ToolUse, MultiTurn |
+| ADVERSARIAL | Safety/red-teaming | Jailbreak, Injection, Bias |
+| CUSTOM | User-defined | Any bespoke evaluation |</p>
+<h3>3.3 Agent Under Test</h3>
+<p><strong>File:</strong> <code>agent_eval/orchestrator/agent.py</code></p>
+<p><strong>AgentUnderTest</strong> is an abstract interface with three modes:
+- <code>generate(prompt) -&gt; str</code>: Single-turn text generation.
+- <code>chat(messages) -&gt; str</code>: Multi-turn conversation.
+- <code>act(state, tools, goal) -&gt; dict</code>: Tool-use / agentic action (returns JSON dict).</p>
+<p><strong>Implementations:</strong>
+- <strong>OpenAIAgent</strong>: Wraps any OpenAI-compatible model via <code>LLMClient</code>.
+- <strong>CallableAgent</strong>: Wraps arbitrary Python callables or module classes via <code>from_module()</code>.</p>
+<p><strong>JSON Extraction</strong> (<code>_extract_json</code>):
+Tries fenced code blocks first (<code>```json ... ```</code>), then scans outermost <code>{...}</code> pairs. Returns <code>{"type": "error", ...}</code> on failure so callers can distinguish parse failures from legitimate actions.</p>
+<h3>3.4 Task Queue</h3>
+<p><strong>File:</strong> <code>agent_eval/orchestrator/task_queue.py</code></p>
+<p>Priority-based queue using Python <code>heapq</code>. Supports:
+- 4 priority levels: LOW, NORMAL, HIGH, CRITICAL
+- Retry with exponential backoff (max 3 retries by default)
+- Lifecycle callbacks (enqueue, dequeue, complete, fail, cancel)
+- Progress tracking (pending/running/completed/failed counts)</p>
+<p><strong>Thread Safety:</strong> The queue is accessed from <code>ThreadPoolExecutor</code> workers; all operations are atomic at the object level (Python GIL protects dict/list ops). The <code>TaskQueue</code> itself does not use explicit locks, relying on CPython's GIL for simplicity.</p>
+<h3>3.5 Judge System</h3>
+<p><strong>File:</strong> <code>agent_eval/judges/base.py</code>, <code>agent_eval/judges/panel.py</code>, <code>agent_eval/judges/llm_judge.py</code></p>
+<p><strong>BaseJudge</strong> defines <code>score(task, output) -&gt; float</code> and <code>explain(task, output, score) -&gt; str</code>.</p>
+<p><strong>MultiJudgePanel</strong> provides cross-validation:
+- Runs all judges independently.
+- Catches exceptions per-judge (sets <code>score=None</code>, continues).
+- Computes consistency (<code>1 - 2 * stdev(scores)</code>).
+- Supports 7 aggregation strategies: <code>weighted</code>, <code>mean</code>, <code>median</code>, <code>unanimous</code>, <code>majority</code>, <code>min</code>, <code>max</code>.
+- <strong>Weighted aggregation</strong> normalizes weights when some judges error out.</p>
+<p><strong>LLMJudge</strong> uses self-consistency sampling (<code>n_samples</code> calls, median score) with chain-of-thought prompting.</p>
+<p><strong>EnsembleJudge</strong> combines multiple judges with weights, skipping judges that throw exceptions.</p>
+<h3>3.6 Scorer System</h3>
+<p><strong>File:</strong> <code>agent_eval/scorers/base.py</code>, <code>agent_eval/scorers/factory.py</code></p>
+<p>28 built-in scorers across 6 categories:
+- <strong>Deterministic</strong>: exact_match, numeric_match, regex_match, json_valid, keyword, length, contains_any, contains_all
+- <strong>LLM-based</strong>: g_eval, faithfulness, hallucination, answer_correctness, answer_relevancy, contextual_relevancy/recall/precision, summarization
+- <strong>Safety</strong>: toxicity, bias, safety
+- <strong>Agent-specific</strong>: task_completion, tool_call_correctness, conversation_quality, role_adherence, task_efficiency
+- <strong>Ensemble</strong>: ensemble (multi-scorer aggregation), threshold (wrapper)</p>
+<p><strong>BaseScorer</strong> provides:
+- <code>_call_llm(prompt)</code> via unified <code>LLMClient</code> (retry, timeout)
+- <code>_parse_score(text)</code> robust regex-based extraction
+- <code>_parse_reason(text)</code> extracts <code>REASON:</code> prefix</p>
+<p><strong>ScorerBridge</strong> (<code>agent_eval/judges/factory.py</code>) wraps any <code>BaseScorer</code> as a <code>BaseJudge</code> for backward compatibility.</p>
+<h3>3.7 LLM Client</h3>
+<p><strong>File:</strong> <code>agent_eval/llm_client.py</code></p>
+<p>Unified wrapper around OpenAI client:
+- <strong>Lazy initialization</strong>: <code>_get_client()</code> creates the client on first use.
+- <strong>Retry logic</strong>: Exponential backoff on <code>429</code>, <code>502</code>, <code>503</code>, <code>504</code>.
+- <strong>Fail-fast</strong>: No retry on <code>401</code>, <code>403</code>.
+- <strong>Configurable</strong>: model, timeout, max_retries, backoff, api_key, base_url.</p>
+<h3>3.8 Result Store</h3>
+<p><strong>File:</strong> <code>agent_eval/orchestrator/result_store.py</code></p>
+<p>Pluggable storage backends:
+- <strong>JSONBackend</strong>: Filesystem-based, human-readable.
+- <strong>SQLiteBackend</strong>: Structured query support.
+- <strong>MemoryBackend</strong>: Ephemeral, for testing.</p>
+<p><strong>EvaluationReport</strong> is the canonical report structure:
+- <code>run_id</code>, <code>timestamp</code>, <code>agent_name</code>, <code>agent_version</code>
+- <code>summary</code>: overall_score, macro_score, micro_score, total_tasks, pass_rate, dimensions
+- <code>plugin_results</code>: per-plugin score, passed, failed, total, pass_rate
+- <code>task_results</code>: per-task serialized <code>EvalResult</code> (including <code>dimension_scores</code>)
+- <code>metadata</code>: run context</p>
+<h3>3.9 Hook System</h3>
+<p><strong>File:</strong> <code>agent_eval/orchestrator/hooks.py</code></p>
+<p>Lifecycle events:
+- <code>evaluation_start / evaluation_complete</code>
+- <code>plugin_setup / plugin_teardown</code>
+- <code>task_generated / task_execute / task_evaluate / task_complete / task_failed</code></p>
+<p>Hooks are fire-and-forget (exceptions are caught and returned in a list, not propagated).</p>
+<h3>3.10 Reporting</h3>
+<p><strong>File:</strong> <code>agent_eval/reporting.py</code></p>
+<p>Generates reports in 3 formats:
+- <strong>JSON</strong>: Raw structured data.
+- <strong>HTML</strong>: Styled dashboard with score bars, dimension tables, plugin breakdowns. All dynamic content is HTML-escaped for XSS safety.
+- <strong>Markdown</strong>: Human-readable with ASCII bar charts.</p>
+<hr />
+<h2>4. Data Flow</h2>
+<pre><code>1. CLI parses args + config
+   └── agent, plugin_names, plugin_configs, eval_config
+
+2. Orchestrator.run_evaluation()
+   a. Create EvalContext (agent, metadata, run_id)
+   b. Init plugins (setup + config)
+   c. For each plugin:
+      i.   generate_tasks() → task dicts
+      ii.  enqueue_batch() → TaskQueue
+      iii. ThreadPoolExecutor:
+           - dequeue task
+           - execute_task(task) → raw output
+           - evaluate(task, output) → EvalResult
+           - complete/fail task
+   d. Generate report:
+      - Aggregate scores (micro/macro)
+      - Compute dimension averages
+      - Serialize task results
+   e. Save report → ResultStore
+   f. teardown plugins (finally)
+
+3. ReportGenerator.generate()
+   └── JSON / HTML / Markdown files
+</code></pre>
+<hr />
+<h2>5. Extension Points</h2>
+<h3>5.1 Adding a Plugin</h3>
+<pre><code class="language-python">from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+
+@register_plugin
+class MyPlugin(BasePlugin):
+    name = &quot;my_plugin&quot;
+    evaluation_type = EvaluationType.CUSTOM
+    supported_dimensions = [&quot;accuracy&quot;, &quot;speed&quot;]
+
+    def setup(self, config):
+        pass
+
+    def generate_tasks(self, context):
+        return [{&quot;task_id&quot;: &quot;t1&quot;, &quot;prompt&quot;: &quot;...&quot;}]
+
+    def execute_task(self, task, context):
+        return context.agent_under_test.generate(task[&quot;prompt&quot;])
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=1.0,
+            raw_score={},
+            details={},
+            artifacts=[output],
+            passed=True,
+            execution_time_ms=0,
+            task_id=task[&quot;task_id&quot;],
+            dimension_scores={&quot;accuracy&quot;: 1.0},
+        )
+</code></pre>
+<h3>5.2 Adding a Scorer</h3>
+<pre><code class="language-python">from agent_eval.scorers.base import BaseScorer, ScorerResult
+from agent_eval.scorers.factory import scorer
+
+@scorer(&quot;my_scorer&quot;)
+class MyScorer(BaseScorer):
+    name = &quot;my_scorer&quot;
+
+    def score(self, output: str, **kwargs) -&gt; ScorerResult:
+        score = 1.0 if &quot;correct&quot; in output else 0.0
+        return ScorerResult(name=self.name, score=score, reason=&quot;...&quot;, passed=score &gt;= 0.5)
+</code></pre>
+<h3>5.3 Adding a Judge</h3>
+<pre><code class="language-python">from agent_eval.judges.base import BaseJudge
+
+class MyJudge(BaseJudge):
+    name = &quot;my_judge&quot;
+
+    def score(self, task, output) -&gt; float:
+        return 1.0
+
+    def explain(self, task, output, score) -&gt; str:
+        return f&quot;Score: {score}&quot;
+</code></pre>
+<p>Register via <code>JudgeFactory.register("my_judge", MyJudge)</code>.</p>
+<hr />
+<h2>6. Configuration System</h2>
+<p><strong>File:</strong> <code>agent_eval/config.py</code></p>
+<p>Hierarchical config:</p>
+<pre><code class="language-yaml">orchestrator:
+  max_workers: 4
+  queue_backend: memory
+  storage:
+    type: json
+    output_dir: ./eval_results
+  log_level: INFO
+
+agent:
+  type: callable
+  module: my_module:MyAgent
+  config: {}
+
+plugins:
+  coding:
+    enabled: true
+    timeout: 30
+    task_file: scenarios/coding.yaml
+  jailbreak:
+    enabled: true
+    attack_config: attacks/comprehensive.yaml
+
+eval_config: {}
+
+report:
+  formats: [json, html, markdown]
+  output_dir: ./eval_results
+</code></pre>
+<hr />
+<h2>7. Error Handling Strategy</h2>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Strategy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plugin setup</td>
+<td>Fatal (raise)</td>
+</tr>
+<tr>
+<td>Task generate</td>
+<td>Fatal (raise), teardown via <code>finally</code></td>
+</tr>
+<tr>
+<td>Task execute</td>
+<td>Catch all, return failed <code>EvalResult</code>, retry up to 3x</td>
+</tr>
+<tr>
+<td>Judge score</td>
+<td>Catch per-judge, set <code>score=None</code>, continue</td>
+</tr>
+<tr>
+<td>Plugin teardown</td>
+<td>Catch and log warning, never fatal</td>
+</tr>
+<tr>
+<td>LLM call</td>
+<td>Retry on transient, fail-fast on auth</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>8. Security Considerations</h2>
+<ol>
+<li><strong>Code Execution</strong>: <code>CodingPlugin</code> and <code>HumanEvalPlugin</code> run arbitrary Python via <code>subprocess</code>. Production use should use sandboxed containers (Docker, gVisor).</li>
+<li><strong>HTML Reports</strong>: All dynamic content is escaped via <code>html.escape()</code> before injection.</li>
+<li><strong>API Keys</strong>: <code>LLMClient</code> supports <code>api_key</code> and <code>base_url</code> parameters. Keys should be passed via env vars, not config files.</li>
+<li><strong>Adversarial Tests</strong>: Jailbreak/Injection plugins contain harmful prompt templates for red-teaming. These are safety evaluation tools, not attack payloads.</li>
+</ol>
+<hr />
+<h2>9. Testing Strategy</h2>
+<ul>
+<li><strong>Unit tests</strong>: <code>tests/unit/</code> covers orchestrator, task queue, agent JSON extraction, LLM client retry logic, judge panel aggregation.</li>
+<li><strong>Mock-based</strong>: All LLM calls and plugin executions are mocked.</li>
+<li><strong>Key test scenarios</strong>:</li>
+<li>Plugin config propagation</li>
+<li>Instance isolation across runs</li>
+<li>Teardown on failure</li>
+<li>Task result serialization/deserialization</li>
+<li>Micro/macro score calculation</li>
+<li>Dimension score override</li>
+<li>Judge error handling</li>
+</ul>
+<hr />
+<h2>10. Future Enhancements</h2>
+<ol>
+<li><strong>Distributed Execution</strong>: Replace <code>ThreadPoolExecutor</code> with Celery / Ray for horizontal scaling.</li>
+<li><strong>Sandbox Integration</strong>: Docker-based sandbox for code execution plugins.</li>
+<li><strong>Live Dashboard</strong>: Real-time WebSocket updates during evaluation runs.</li>
+<li><strong>Regression Detection</strong>: Automatic comparison against baseline reports with statistical significance testing.</li>
+<li><strong>Custom Scorer DSL</strong>: YAML-based scorer configuration without writing Python.</li>
+</ol>
+</body>
+</html>

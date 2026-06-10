@@ -38,7 +38,7 @@ class ScorerBridge(BaseJudge):
         return result.score
 
     def explain(self, task: Dict[str, Any], output: Any, score: float) -> str:
-        return getattr(self._scorer, "reason", f"Scored: {score:.2f}")
+        return f"Scored: {score:.2f}"
 
     def judge(self, **kwargs) -> JudgeResult:
         import time
