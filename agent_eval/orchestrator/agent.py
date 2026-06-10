@@ -81,6 +81,8 @@ class OpenAIAgent(AgentUnderTest):
         version: str = "1.0",
         timeout: float = 60.0,
         max_retries: int = 3,
+        api_key: str = None,
+        base_url: str = None,
     ):
         self.model = model
         self.system_prompt = system_prompt
@@ -91,6 +93,8 @@ class OpenAIAgent(AgentUnderTest):
             model=model,
             timeout=timeout,
             max_retries=max_retries,
+            api_key=api_key,
+            base_url=base_url,
         )
 
     def generate(self, prompt: str) -> str:

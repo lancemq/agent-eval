@@ -54,7 +54,7 @@ class BaseJudge(ABC):
 
 class LLMJudgeConfig:
     """Configuration for LLM-based judges."""
-    
+
     def __init__(
         self,
         model: str = "gpt-4o-mini",
@@ -64,6 +64,10 @@ class LLMJudgeConfig:
         n_samples: int = 3,
         temperature: float = 0.0,
         max_tokens: int = 500,
+        api_key: str = None,
+        base_url: str = None,
+        timeout: float = 60.0,
+        max_retries: int = 3,
     ):
         self.model = model
         self.rubric = rubric
@@ -72,3 +76,7 @@ class LLMJudgeConfig:
         self.n_samples = n_samples
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.api_key = api_key
+        self.base_url = base_url
+        self.timeout = timeout
+        self.max_retries = max_retries

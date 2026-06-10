@@ -114,7 +114,8 @@ def cmd_report(args: argparse.Namespace) -> None:
 def create_agent(agent_str: str, config: Dict[str, Any]) -> AgentUnderTest:
     if agent_str.startswith("openai:"):
         model = agent_str.split(":", 1)[1]
-        return OpenAIAgent(model=model, **config)
+        cfg = {k: v for k, v in config.items() if k != "model"}
+        return OpenAIAgent(model=model, **cfg)
     elif ":" in agent_str:
         return CallableAgent.from_module(agent_str, config)
     else:

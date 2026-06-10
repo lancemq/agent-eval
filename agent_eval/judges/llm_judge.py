@@ -18,6 +18,8 @@ class LLMJudge(BaseJudge):
             model=config.model,
             timeout=getattr(config, "timeout", 60.0),
             max_retries=getattr(config, "max_retries", 3),
+            api_key=getattr(config, "api_key", None),
+            base_url=getattr(config, "base_url", None),
         )
     
     def score(self, task: Dict[str, Any], output: Any) -> float:
@@ -149,6 +151,8 @@ class EnsembleJudge(BaseJudge):
     """Ensemble of multiple judges with voting."""
 
     def __init__(self, judges: List[BaseJudge], weights: List[float] = None):
+        if not judges:
+            raise ValueError("EnsembleJudge requires at least one judge")
         self.judges = judges
         self.weights = weights or [1.0 / len(judges)] * len(judges)
         self.name = "ensemble"

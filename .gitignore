@@ -31,3 +31,4 @@ eval_results/
 
 # Config with secrets
 configs/*.local.yaml
+results/

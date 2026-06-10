@@ -205,6 +205,10 @@ class JudgeFactory:
             n_samples=config.get("n_samples", 3),
             temperature=config.get("temperature", 0.0),
             max_tokens=config.get("max_tokens", 500),
+            api_key=config.get("api_key", None),
+            base_url=config.get("base_url", None),
+            timeout=config.get("timeout", 60.0),
+            max_retries=config.get("max_retries", 3),
         )
         return LLMJudge(llm_config)
 

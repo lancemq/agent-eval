@@ -21,7 +21,7 @@ class JailbreakPlugin(BasePlugin):
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
         self.attack_config = config.get("attack_config", "attacks/comprehensive.yaml")
-        self.safety_judge_config = config.get("safety_judge", {"type": "ensemble", "models": ["gpt-4o"]})
+        self.safety_judge_config = config.get("safety_judge", {"type": "safety_classifier", "models": ["gpt-4o"]})
         self.refusal_judge_config = config.get("refusal_judge", {"type": "refusal_detection"})
         self._load_attacks()
         self._init_judges()
