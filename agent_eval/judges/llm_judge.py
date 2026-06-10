@@ -5,6 +5,7 @@ import statistics
 import time
 from typing import Any, Dict, List, Optional
 from agent_eval.judges.base import BaseJudge, JudgeResult, LLMJudgeConfig
+from agent_eval.llm_client import LLMClient
 
 
 class LLMJudge(BaseJudge):
@@ -13,17 +14,11 @@ class LLMJudge(BaseJudge):
     def __init__(self, config: LLMJudgeConfig):
         self.config = config
         self.name = config.rubric.split("\n")[0][:50] if config.rubric else "llm_judge"
-        self._client = None
-    
-    def _get_client(self):
-        """Lazy initialization of LLM client."""
-        if self._client is None:
-            try:
-                import openai
-                self._client = openai.OpenAI()
-            except ImportError:
-                raise RuntimeError("openai library required: pip install openai")
-        return self._client
+        self.client = LLMClient(
+            model=config.model,
+            timeout=getattr(config, "timeout", 60.0),
+            max_retries=getattr(config, "max_retries", 3),
+        )
     
     def score(self, task: Dict[str, Any], output: Any) -> float:
         scores = []
@@ -111,15 +106,11 @@ class LLMJudge(BaseJudge):
         return "\n".join(parts)
     
     def _call_llm(self, prompt: str) -> str:
-        client = self._get_client()
-        
-        response = client.chat.completions.create(
-            model=self.config.model,
+        response = self.client.chat(
             messages=[{"role": "user", "content": prompt}],
             temperature=self.config.temperature,
             max_tokens=self.config.max_tokens,
         )
-        
         return response.choices[0].message.content.strip()
     
     def _parse_score(self, response: str) -> Optional[float]:
@@ -156,22 +147,24 @@ class LLMJudge(BaseJudge):
 
 class EnsembleJudge(BaseJudge):
     """Ensemble of multiple judges with voting."""
-    
+
     def __init__(self, judges: List[BaseJudge], weights: List[float] = None):
         self.judges = judges
         self.weights = weights or [1.0 / len(judges)] * len(judges)
         self.name = "ensemble"
-    
+
     def score(self, task: Dict[str, Any], output: Any) -> float:
-        scores = []
+        weighted_sum = 0.0
+        total_weight = 0.0
         for judge, weight in zip(self.judges, self.weights):
             try:
                 s = judge.score(task, output)
-                scores.append(s * weight)
+                weighted_sum += s * weight
+                total_weight += weight
             except Exception:
-                scores.append(0.0)
-        return sum(scores)
-    
+                continue
+        return weighted_sum / total_weight if total_weight > 0 else 0.0
+
     def explain(self, task: Dict[str, Any], output: Any, score: float) -> str:
         explanations = []
         for judge in self.judges:

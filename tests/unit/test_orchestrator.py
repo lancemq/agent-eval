@@ -392,3 +392,120 @@ def test_evaluation_report():
     restored = EvaluationReport.from_dict(d)
     assert restored.run_id == "test_run"
     assert restored.summary["overall_score"] == 0.75
+
+
+@register_plugin
+class HeavyPlugin(BasePlugin):
+    name = "heavy_plugin"
+    evaluation_type = EvaluationType.BENCHMARK
+    supported_dimensions = ["knowledge"]
+
+    def setup(self, config):
+        pass
+
+    def generate_tasks(self, context):
+        return [{"id": i} for i in range(10)]
+
+    def execute_task(self, task, context):
+        return "ok"
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=1.0,
+            raw_score={},
+            details={},
+            artifacts=[],
+            passed=True,
+            execution_time_ms=1,
+            task_id=str(task["id"]),
+        )
+
+
+@register_plugin
+class LightPlugin(BasePlugin):
+    name = "light_plugin"
+    evaluation_type = EvaluationType.BENCHMARK
+    supported_dimensions = ["knowledge"]
+
+    def setup(self, config):
+        pass
+
+    def generate_tasks(self, context):
+        return [{"id": 0}]
+
+    def execute_task(self, task, context):
+        return "ok"
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=0.0,
+            raw_score={},
+            details={},
+            artifacts=[],
+            passed=False,
+            execution_time_ms=1,
+            task_id=str(task["id"]),
+        )
+
+
+@register_plugin
+class DimensionPlugin(BasePlugin):
+    name = "dimension_plugin"
+    evaluation_type = EvaluationType.DYNAMIC
+    supported_dimensions = ["planning", "tool_calling"]
+
+    def setup(self, config):
+        pass
+
+    def generate_tasks(self, context):
+        return [{"id": 0}, {"id": 1}]
+
+    def execute_task(self, task, context):
+        return "ok"
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=0.5,
+            raw_score={},
+            details={},
+            artifacts=[],
+            passed=True,
+            execution_time_ms=1,
+            task_id=str(task["id"]),
+            dimension_scores={"planning": 0.3 if task["id"] == 0 else 0.7, "tool_calling": 0.8},
+        )
+
+
+def test_micro_and_macro_scores():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator()
+    report = orch.run_evaluation(agent, ["heavy_plugin", "light_plugin"])
+
+    # macro = (1.0 + 0.0) / 2 = 0.5
+    # micro = (10*1.0 + 1*0.0) / 11 = ~0.909
+    assert abs(report.summary["macro_score"] - 0.5) < 0.001
+    assert abs(report.summary["micro_score"] - 0.909) < 0.001
+    assert abs(report.summary["overall_score"] - report.summary["micro_score"]) < 0.001
+
+
+def test_dimension_scores_override_fallback():
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator()
+    report = orch.run_evaluation(agent, ["dimension_plugin"])
+
+    # planning: (0.3 + 0.7) / 2 = 0.5
+    # tool_calling: (0.8 + 0.8) / 2 = 0.8
+    assert abs(report.summary["dimensions"]["planning"] - 0.5) < 0.001
+    assert abs(report.summary["dimensions"]["tool_calling"] - 0.8) < 0.001

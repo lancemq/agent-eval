@@ -123,7 +123,11 @@ def test_panel_with_error_judge():
     panel = MultiJudgePanel([ConstantJudge(), ErrorJudge()])
     result = panel.evaluate({}, {})
     assert "error_judge" in result
-    assert result["error_judge"]["score"] == 0.0
+    assert result["error_judge"]["score"] is None
+    assert "error" in result["error_judge"]
+    assert result["_judge_errors"] == 1
+    # Valid judge still contributes to the final score
+    assert result["_final"] == 0.9
 
 
 def test_get_judge_details():

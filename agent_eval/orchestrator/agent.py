@@ -1,7 +1,11 @@
 """Agent Under Test abstraction for wrapping any AI agent."""
 
+import json
+import re
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
+
+from agent_eval.llm_client import LLMClient
 
 
 class AgentUnderTest(ABC):
@@ -28,15 +32,41 @@ Available Tools: {available_tools}
 
 Decide on the next action. Return a JSON with keys: type (tool_call or finish), tool (if tool_call), params (dict of params)."""
         response = self.generate(prompt)
-        import json
-        import re
-        json_match = re.search(r"\{.*\}", response, re.DOTALL)
-        if json_match:
+        return self._extract_json(response)
+
+    @staticmethod
+    def _extract_json(response: str) -> Dict[str, Any]:
+        """Extract a JSON dict from response text.
+
+        Tries fenced code blocks first, then scans for outermost { ... } pairs.
+        Returns an error dict on failure so callers can distinguish parse failures
+        from legitimate finish actions.
+        """
+        # 1. Fenced code block (```json ... ``` or ``` ... ```)
+        fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response, re.IGNORECASE)
+        if fenced:
             try:
-                return json.loads(json_match.group())
+                parsed = json.loads(fenced.group(1))
+                if isinstance(parsed, dict):
+                    return parsed
             except json.JSONDecodeError:
                 pass
-        return {"type": "finish"}
+
+        # 2. Scan all { ... } pairs from outermost to innermost
+        starts = [m.start() for m in re.finditer(r"\{", response)]
+        ends = [m.start() for m in re.finditer(r"\}", response)]
+        for s in starts:
+            for e in reversed(ends):
+                if e <= s:
+                    break
+                try:
+                    parsed = json.loads(response[s : e + 1])
+                    if isinstance(parsed, dict):
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
+
+        return {"type": "error", "reason": "JSON parse failed", "raw": response}
 
 
 class OpenAIAgent(AgentUnderTest):
@@ -49,27 +79,22 @@ class OpenAIAgent(AgentUnderTest):
         temperature: float = 0.0,
         name: str = "openai_agent",
         version: str = "1.0",
+        timeout: float = 60.0,
+        max_retries: int = 3,
     ):
         self.model = model
         self.system_prompt = system_prompt
         self.temperature = temperature
         self.name = name
         self.version = version
-        self._client = None
-
-    def _get_client(self):
-        if self._client is None:
-            try:
-                import openai
-                self._client = openai.OpenAI()
-            except ImportError:
-                raise RuntimeError("openai library required: pip install openai")
-        return self._client
+        self.client = LLMClient(
+            model=model,
+            timeout=timeout,
+            max_retries=max_retries,
+        )
 
     def generate(self, prompt: str) -> str:
-        client = self._get_client()
-        response = client.chat.completions.create(
-            model=self.model,
+        response = self.client.chat(
             messages=[
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": prompt},
@@ -79,11 +104,9 @@ class OpenAIAgent(AgentUnderTest):
         return response.choices[0].message.content.strip()
 
     def chat(self, messages: List[Dict[str, str]]) -> str:
-        client = self._get_client()
         formatted = [{"role": "system", "content": self.system_prompt}]
         formatted.extend({"role": m["role"], "content": m["content"]} for m in messages)
-        response = client.chat.completions.create(
-            model=self.model,
+        response = self.client.chat(
             messages=formatted,
             temperature=self.temperature,
         )

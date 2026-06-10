@@ -39,6 +39,7 @@ class EvalResult:
     execution_time_ms: int
     task_id: str = ""
     error: Optional[str] = None
+    dimension_scores: Dict[str, float] = field(default_factory=dict)
 
 
 class BasePlugin(ABC):

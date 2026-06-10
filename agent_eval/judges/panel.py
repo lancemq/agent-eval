@@ -25,14 +25,15 @@ class MultiJudgePanel:
         """Evaluate with all judges and aggregate results."""
         results = {}
         scores = []
-        
+        judge_errors = 0
+
         for judge in self.judges:
             try:
                 start = time.time()
                 score = judge.score(task, output)
                 explanation = judge.explain(task, output, score)
                 exec_time = int((time.time() - start) * 1000)
-                
+
                 results[judge.name] = {
                     "score": score,
                     "explanation": explanation,
@@ -41,30 +42,34 @@ class MultiJudgePanel:
                 scores.append(score)
             except Exception as e:
                 results[judge.name] = {
-                    "score": 0.0,
+                    "score": None,
                     "explanation": f"ERROR: {e}",
                     "execution_time_ms": 0,
+                    "error": str(e),
                 }
-                scores.append(0.0)
-        
-        # Calculate consistency
-        if len(scores) > 1:
-            stdev = statistics.stdev(scores)
+                judge_errors += 1
+
+        valid_scores = [s for s in scores if s is not None]
+
+        # Calculate consistency (only on valid scores)
+        if len(valid_scores) > 1:
+            stdev = statistics.stdev(valid_scores)
             consistency = max(0.0, 1.0 - stdev * 2)
         else:
             consistency = 1.0
-        
+
         results["_consistency"] = consistency
         results["_consistency_passed"] = consistency >= (1.0 - self.consistency_threshold)
-        
+        results["_judge_errors"] = judge_errors
+
         # Aggregate final score
-        final_score = self._aggregate(scores, results)
+        final_score = self._aggregate(valid_scores, results)
         results["_final"] = final_score
-        results["_scores"] = scores
-        results["_mean"] = statistics.mean(scores) if scores else 0.0
-        results["_median"] = statistics.median(scores) if scores else 0.0
-        results["_stdev"] = statistics.stdev(scores) if len(scores) > 1 else 0.0
-        
+        results["_scores"] = valid_scores
+        results["_mean"] = statistics.mean(valid_scores) if valid_scores else 0.0
+        results["_median"] = statistics.median(valid_scores) if valid_scores else 0.0
+        results["_stdev"] = statistics.stdev(valid_scores) if len(valid_scores) > 1 else 0.0
+
         return results
     
     def _aggregate(self, scores: List[float], results: Dict) -> float:
@@ -74,6 +79,8 @@ class MultiJudgePanel:
             for judge in self.judges:
                 weight = self.weights.get(judge.name, 0.0)
                 score = results.get(judge.name, {}).get("score", 0.0)
+                if score is None:
+                    continue
                 weighted_sum += score * weight
                 total_weight += weight
             return weighted_sum / total_weight if total_weight > 0 else 0.0

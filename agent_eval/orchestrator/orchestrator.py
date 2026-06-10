@@ -173,6 +173,7 @@ class EvaluationOrchestrator:
         total_tasks = 0
         total_passed = 0
         total_score = 0.0
+        all_task_scores: List[float] = []
 
         for plugin in plugins:
             results = all_results.get(plugin.name, [])
@@ -195,14 +196,24 @@ class EvaluationOrchestrator:
             total_tasks += len(results)
             total_passed += passed
             total_score += avg_score
+            all_task_scores.extend(scores)
 
-            for dim in plugin.supported_dimensions:
-                if dim not in dimension_scores:
-                    dimension_scores[dim] = []
-                dimension_scores[dim].append(avg_score)
+            # Per-task dimension scores, with fallback to plugin-level dims
+            for result in results:
+                if result.dimension_scores:
+                    for dim, score in result.dimension_scores.items():
+                        dimension_scores.setdefault(dim, []).append(score)
+                else:
+                    for dim in plugin.supported_dimensions:
+                        dimension_scores.setdefault(dim, []).append(result.score)
+
+        macro_score = total_score / len(plugins) if plugins else 0.0
+        micro_score = sum(all_task_scores) / len(all_task_scores) if all_task_scores else 0.0
 
         summary = {
-            "overall_score": total_score / len(plugins) if plugins else 0.0,
+            "overall_score": micro_score,
+            "macro_score": macro_score,
+            "micro_score": micro_score,
             "total_tasks": total_tasks,
             "total_passed": total_passed,
             "total_failed": total_tasks - total_passed,
