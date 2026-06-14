@@ -23,6 +23,25 @@ from agent_eval.scorers.agent import (
     ConversationQualityScorer, RoleAdherenceScorer, TaskEfficiencyScorer,
 )
 from agent_eval.scorers.ensemble import EnsembleScorer, ThresholdScorer
+from agent_eval.scorers.similarity import (
+    BLEUScorer, ROUGEScorer, F1TokenScorer, EditDistanceScorer,
+    JaccardScorer, CosineSimilarityScorer, SemanticSimilarityScorer,
+)
+from agent_eval.scorers.code_quality import (
+    CodeQualityScorer, SQLValidationScorer, CodeFormatScorer,
+    CyclomaticComplexityScorer, CodeSecurityScorer,
+)
+from agent_eval.scorers.text_analysis import (
+    ReadabilityScorer, LexicalDiversityScorer, SentimentScorer,
+    GrammarCheckScorer, ToneAnalyzerScorer, CoherenceScorer, FluencyScorer,
+)
+from agent_eval.scorers.format_validation import (
+    DateTimeFormatScorer, URLFormatScorer, EmailFormatScorer,
+    MarkdownStructureScorer, CitationCheckScorer, InstructionFollowingScorer,
+)
+from agent_eval.scorers.metrics import (
+    ClassificationMetricsScorer, RegressionMetricsScorer, RankingMetricsScorer,
+)
 
 __all__ = [
     "BaseScorer", "ScorerResult", "ScorerFactory", "scorer",
@@ -37,6 +56,20 @@ __all__ = [
     "TaskCompletionScorer", "ToolCallCorrectnessScorer",
     "ConversationQualityScorer", "RoleAdherenceScorer", "TaskEfficiencyScorer",
     "EnsembleScorer", "ThresholdScorer",
+    # Similarity
+    "BLEUScorer", "ROUGEScorer", "F1TokenScorer", "EditDistanceScorer",
+    "JaccardScorer", "CosineSimilarityScorer", "SemanticSimilarityScorer",
+    # Code quality
+    "CodeQualityScorer", "SQLValidationScorer", "CodeFormatScorer",
+    "CyclomaticComplexityScorer", "CodeSecurityScorer",
+    # Text analysis
+    "ReadabilityScorer", "LexicalDiversityScorer", "SentimentScorer",
+    "GrammarCheckScorer", "ToneAnalyzerScorer", "CoherenceScorer", "FluencyScorer",
+    # Format validation
+    "DateTimeFormatScorer", "URLFormatScorer", "EmailFormatScorer",
+    "MarkdownStructureScorer", "CitationCheckScorer", "InstructionFollowingScorer",
+    # ML metrics
+    "ClassificationMetricsScorer", "RegressionMetricsScorer", "RankingMetricsScorer",
 ]
 
 # Import to trigger registration

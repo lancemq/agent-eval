@@ -18,6 +18,27 @@ from agent_eval.scorers.agent import (
 )
 from agent_eval.scorers.ensemble import EnsembleScorer, ThresholdScorer
 
+# New scorer modules
+from agent_eval.scorers.similarity import (
+    BLEUScorer, ROUGEScorer, F1TokenScorer, EditDistanceScorer,
+    JaccardScorer, CosineSimilarityScorer, SemanticSimilarityScorer,
+)
+from agent_eval.scorers.code_quality import (
+    CodeQualityScorer, SQLValidationScorer, CodeFormatScorer,
+    CyclomaticComplexityScorer, CodeSecurityScorer,
+)
+from agent_eval.scorers.text_analysis import (
+    ReadabilityScorer, LexicalDiversityScorer, SentimentScorer,
+    GrammarCheckScorer, ToneAnalyzerScorer, CoherenceScorer, FluencyScorer,
+)
+from agent_eval.scorers.format_validation import (
+    DateTimeFormatScorer, URLFormatScorer, EmailFormatScorer,
+    MarkdownStructureScorer, CitationCheckScorer, InstructionFollowingScorer,
+)
+from agent_eval.scorers.metrics import (
+    ClassificationMetricsScorer, RegressionMetricsScorer, RankingMetricsScorer,
+)
+
 
 def scorer(name: str):
     """Decorator to register a custom scorer class.
@@ -134,6 +155,39 @@ class ScorerFactory:
             "task_efficiency": "Task completion efficiency (steps)",
             "ensemble": "Combine multiple scorers",
             "threshold": "Threshold wrapper for any scorer",
+            # Similarity scorers
+            "bleu": "BLEU-N score for text generation quality",
+            "rouge": "ROUGE-N and ROUGE-L for summarization",
+            "f1_token": "Token-level F1 score (precision/recall/F1)",
+            "edit_distance": "Normalized Levenshtein edit distance",
+            "jaccard": "Jaccard similarity coefficient",
+            "cosine_similarity": "Cosine similarity with TF-IDF vectors",
+            "semantic_similarity": "Semantic similarity via sentence embeddings",
+            # Code quality scorers
+            "code_quality": "Python code quality via static analysis",
+            "sql_validation": "SQL syntax validation and anti-pattern detection",
+            "code_format": "Code formatting compliance (PEP 8 style)",
+            "complexity": "Cyclomatic complexity of Python code",
+            "code_security": "Python code security vulnerability detection",
+            # Text analysis scorers
+            "readability": "Flesch Reading Ease and Grade Level",
+            "lexical_diversity": "Lexical diversity (type-token ratio)",
+            "sentiment": "Rule-based sentiment analysis",
+            "grammar_check": "Rule-based grammar checking",
+            "tone_analysis": "Text tone/formality analysis",
+            "coherence": "Text coherence via adjacent sentence overlap",
+            "fluency": "Text fluency via n-gram repetition and sentence variety",
+            # Format validation scorers
+            "datetime_format": "Date/time format validation",
+            "url_format": "URL format validation (http/https/ftp)",
+            "email_format": "Email address format validation",
+            "markdown_structure": "Markdown structure validation",
+            "citation_check": "Citation/reference presence and format",
+            "instruction_following": "Check if output follows formatting instructions",
+            # ML metrics scorers
+            "classification_metrics": "Classification metrics: P/R/F1/accuracy",
+            "regression_metrics": "Regression metrics: MAE/MSE/RMSE/R²",
+            "ranking_metrics": "Ranking quality: NDCG/MRR/MAP",
         }
 
 
@@ -166,3 +220,41 @@ ScorerFactory.register("role_adherence", RoleAdherenceScorer)
 ScorerFactory.register("task_efficiency", TaskEfficiencyScorer)
 ScorerFactory.register("ensemble", EnsembleScorer)
 ScorerFactory.register("threshold", ThresholdScorer)
+
+# Similarity scorers
+ScorerFactory.register("bleu", BLEUScorer)
+ScorerFactory.register("rouge", ROUGEScorer)
+ScorerFactory.register("f1_token", F1TokenScorer)
+ScorerFactory.register("edit_distance", EditDistanceScorer)
+ScorerFactory.register("jaccard", JaccardScorer)
+ScorerFactory.register("cosine_similarity", CosineSimilarityScorer)
+ScorerFactory.register("semantic_similarity", SemanticSimilarityScorer)
+
+# Code quality scorers
+ScorerFactory.register("code_quality", CodeQualityScorer)
+ScorerFactory.register("sql_validation", SQLValidationScorer)
+ScorerFactory.register("code_format", CodeFormatScorer)
+ScorerFactory.register("complexity", CyclomaticComplexityScorer)
+ScorerFactory.register("code_security", CodeSecurityScorer)
+
+# Text analysis scorers
+ScorerFactory.register("readability", ReadabilityScorer)
+ScorerFactory.register("lexical_diversity", LexicalDiversityScorer)
+ScorerFactory.register("sentiment", SentimentScorer)
+ScorerFactory.register("grammar_check", GrammarCheckScorer)
+ScorerFactory.register("tone_analysis", ToneAnalyzerScorer)
+ScorerFactory.register("coherence", CoherenceScorer)
+ScorerFactory.register("fluency", FluencyScorer)
+
+# Format validation scorers
+ScorerFactory.register("datetime_format", DateTimeFormatScorer)
+ScorerFactory.register("url_format", URLFormatScorer)
+ScorerFactory.register("email_format", EmailFormatScorer)
+ScorerFactory.register("markdown_structure", MarkdownStructureScorer)
+ScorerFactory.register("citation_check", CitationCheckScorer)
+ScorerFactory.register("instruction_following", InstructionFollowingScorer)
+
+# ML metrics scorers
+ScorerFactory.register("classification_metrics", ClassificationMetricsScorer)
+ScorerFactory.register("regression_metrics", RegressionMetricsScorer)
+ScorerFactory.register("ranking_metrics", RankingMetricsScorer)
