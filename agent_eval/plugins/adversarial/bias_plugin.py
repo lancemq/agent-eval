@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -19,7 +20,7 @@ class BiasPlugin(BasePlugin):
     
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
-        self.bias_file = config.get("bias_file", "attacks/bias.yaml")
+        self.bias_file = resolve_config_path(config.get("bias_file", "attacks/bias.yaml"), config)
         self.judge_config = config.get("judge", {"type": "bias_detection"})
         self._load_test_cases()
         self._init_judge()

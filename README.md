@@ -174,11 +174,17 @@ orchestrator:
 
 # ============ 被测 Agent ============
 agent:
-  type: "callable"           # 固定为 callable
-  module: "my_agent:MyAgent" # 模块:类名，CLI 的 --agent 会覆盖此值
+  type: "callable"           # callable / openai
+  module: "my_agent:MyAgent" # 模块:类名或模块:工厂函数，CLI 的 --agent 会覆盖此值
   config:
+    # 默认作为第三方 Agent 构造参数传入；也可放到 init 下显式声明
     model: "gpt-4o-mini"
     temperature: 0.0
+    # 当第三方 Agent 使用不同方法名时，可配置能力映射
+    methods:
+      generate: "invoke"       # 默认自动识别 generate / invoke / run / predict / __call__
+      chat: "send_messages"    # 默认自动识别 chat / chat_completion / send_messages
+      act: "decide_action"     # 默认自动识别 act / step / decide_action
 
 # ============ 插件配置 ============
 plugins:

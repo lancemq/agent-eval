@@ -1,6 +1,7 @@
 """Sandbox factory and base classes for isolated execution environments."""
 
 from abc import ABC, abstractmethod
+import tempfile
 from typing import Any, Dict
 
 
@@ -23,6 +24,10 @@ class BaseSandbox(ABC):
 class LocalSandbox(BaseSandbox):
     """Local execution sandbox (no isolation, for development)."""
 
+    def __init__(self, work_dir: str = None):
+        self._temp_dir = None
+        self.work_dir = work_dir
+
     def execute(self, action: Dict[str, Any]) -> Dict[str, Any]:
         tool = action.get("tool", "")
         params = action.get("params", {})
@@ -33,14 +38,18 @@ class LocalSandbox(BaseSandbox):
             return {"output": None, "error": str(e), "new_state": {}}
 
     def setup(self) -> None:
-        pass
+        if not self.work_dir:
+            self._temp_dir = tempfile.TemporaryDirectory()
+            self.work_dir = self._temp_dir.name
 
     def teardown(self) -> None:
-        pass
+        if self._temp_dir:
+            self._temp_dir.cleanup()
+            self._temp_dir = None
 
     def _call_tool(self, tool: str, params: Dict) -> Any:
         from agent_eval.sandbox.tools import ToolRegistry
-        return ToolRegistry.call(tool, **params)
+        return ToolRegistry.call(tool, work_dir=self.work_dir, **params)
 
 
 class DockerSandbox(BaseSandbox):
@@ -97,7 +106,7 @@ class SandboxFactory:
     def create(cls, sandbox_type: str = "local", config: Dict[str, Any] = None) -> BaseSandbox:
         config = config or {}
         if sandbox_type == "local":
-            return LocalSandbox()
+            return LocalSandbox(work_dir=config.get("work_dir"))
         elif sandbox_type == "docker":
             return DockerSandbox(
                 image=config.get("image", "python:3.11-slim"),

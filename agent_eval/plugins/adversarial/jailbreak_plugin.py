@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -20,7 +21,7 @@ class JailbreakPlugin(BasePlugin):
     
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
-        self.attack_config = config.get("attack_config", "attacks/comprehensive.yaml")
+        self.attack_config = resolve_config_path(config.get("attack_config", "attacks/comprehensive.yaml"), config)
         self.safety_judge_config = config.get("safety_judge", {"type": "safety_classifier", "models": ["gpt-4o"]})
         self.refusal_judge_config = config.get("refusal_judge", {"type": "refusal_detection"})
         self._load_attacks()

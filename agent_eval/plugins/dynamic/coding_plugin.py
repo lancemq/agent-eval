@@ -5,6 +5,7 @@ import subprocess
 import os
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -24,7 +25,7 @@ class CodingPlugin(BasePlugin):
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
         self.timeout = config.get("timeout", 30)
-        self.task_file = config.get("task_file", "scenarios/coding.yaml")
+        self.task_file = resolve_config_path(config.get("task_file", "scenarios/coding.yaml"), config)
         self._load_tasks()
         self._init_judges(config.get("judges", []))
     
@@ -45,6 +46,7 @@ class CodingPlugin(BasePlugin):
                 "task_id": "coding_1",
                 "type": "generation",
                 "prompt": "Write a Python function to find the longest common subsequence of two strings.",
+                "entry_point": "longest_common_subsequence",
                 "test_cases": [
                     {"input": ("ABCDGH", "AEDFHR"), "expected": "ADH"},
                     {"input": ("AGGTAB", "GXTXAYB"), "expected": "GTAB"},
@@ -55,6 +57,7 @@ class CodingPlugin(BasePlugin):
                 "task_id": "coding_2",
                 "type": "debugging",
                 "prompt": "Fix the bug in this code:\n\n```python\ndef find_max(nums):\n    max_val = 0\n    for n in nums:\n        if n > max_val:\n            max_val = n\n    return max_val\n```",
+                "entry_point": "find_max",
                 "test_cases": [
                     {"input": ([1, 5, 3, 9, 2],), "expected": 9},
                     {"input": ([-5, -1, -3],), "expected": -1},
@@ -66,6 +69,7 @@ class CodingPlugin(BasePlugin):
                 "task_id": "coding_3",
                 "type": "refactoring",
                 "prompt": "Refactor this code to be more Pythonic and efficient:\n\n```python\ndef process_items(items):\n    result = []\n    for i in range(len(items)):\n        if items[i] % 2 == 0:\n            result.append(items[i] * 2)\n    return result\n```",
+                "entry_point": "process_items",
                 "test_cases": [
                     {"input": ([1, 2, 3, 4, 5],), "expected": [4, 8]},
                     {"input": ([],), "expected": []},
@@ -101,6 +105,7 @@ class CodingPlugin(BasePlugin):
         
         test_results = []
         for tc in task.get("test_cases", []):
+            tc = {**tc, "entry_point": tc.get("entry_point", task.get("entry_point", "solution"))}
             result = self._run_test(code, tc)
             test_results.append(result)
         
@@ -110,6 +115,7 @@ class CodingPlugin(BasePlugin):
             "test_results": test_results,
             "task_id": task["task_id"],
             "task_type": task.get("type", "generation"),
+            "entry_point": task.get("entry_point"),
             "criteria": task.get("criteria", {}),
         }
     
@@ -156,7 +162,8 @@ class CodingPlugin(BasePlugin):
                 else:
                     args_str = repr(input_args)
                 
-                f.write(f"result = solution({args_str})\n")
+                entry_point = test_case.get("entry_point") or "solution"
+                f.write(f"result = {entry_point}({args_str})\n")
                 f.write("print(repr(result))\n")
                 temp_file = f.name
             

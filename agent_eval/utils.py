@@ -75,3 +75,17 @@ def format_score(score: float, precision: int = 3) -> str:
     """Format score with bar visualization."""
     bar = "█" * int(score * 20)
     return f"{score:.{precision}f} {bar}"
+"""Shared utility helpers."""
+
+import os
+from typing import Any, Dict
+
+
+def resolve_config_path(path: str, config: Dict[str, Any]) -> str:
+    """Resolve plugin file paths relative to the evaluation config file."""
+    if not path or os.path.isabs(path):
+        return path
+    base_dir = config.get("_config_dir")
+    if base_dir:
+        return os.path.abspath(os.path.join(base_dir, path))
+    return path

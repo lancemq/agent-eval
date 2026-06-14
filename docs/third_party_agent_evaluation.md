@@ -26,16 +26,18 @@ JSON / HTML / Markdown 报告
 
 ## 1. 第三方 Agent 接入方式
 
-AgentEval 不要求第三方 Agent 使用特定框架，只要求能被包装成 `AgentUnderTest` 接口。
+AgentEval 不要求第三方 Agent 使用特定框架，只要求能被包装成 `AgentUnderTest` 接口。内置的 `CallableAgent` 会自动适配常见第三方 Agent 对象、类、工厂函数和普通 callable。
 
 核心接口定义：`agent_eval/orchestrator/agent.py:7`
 
-### 必须实现
+### 核心能力
 
 ```python
 generate(prompt: str) -> str   # 单轮文本生成
 chat(messages: list[dict]) -> str  # 多轮对话
 ```
+
+最小可用 Agent 只需要提供单轮生成能力。`CallableAgent` 会自动识别 `generate`、`invoke`、`run`、`predict` 或 `__call__`；如果没有 `chat()`，框架会把多轮消息拼成文本后走单轮生成。
 
 ### 可选实现（参与工具调用类评测时需要）
 
@@ -54,6 +56,30 @@ act(state: dict, available_tools: list, goal: str) -> dict  # 动态工具使用
 ```
 
 若第三方 Agent 未实现 `act()`，框架会使用默认实现（`agent_eval/orchestrator/agent.py:23`），将状态、工具、目标拼成 prompt，尝试解析 Agent 返回的 JSON。
+
+`CallableAgent` 会自动保留第三方对象上的 `act()`，并可识别 `step()`、`decide_action()` 等常见别名。`act()` 可以直接返回 dict，也可以返回包含 JSON 的字符串。
+
+### 方法名映射
+
+如果第三方 Agent 的方法名不在默认识别列表里，可在配置中显式声明：
+
+```yaml
+agent:
+  type: "callable"
+  module: "my_sdk_agent:create_agent"  # 支持模块:类名，也支持模块:工厂函数
+  config:
+    init:
+      model: "my-model"
+      temperature: 0.0
+    methods:
+      generate: "invoke"
+      chat: "send_messages"
+      act: "decide_action"
+    name: "my_sdk_agent"
+    version: "2026.06"
+```
+
+未使用 `init` 时，`config` 中除 `methods`、`name`、`version`、`init` 以外的字段会作为构造参数传给第三方 Agent，兼容旧版配置。
 
 ---
 
@@ -77,8 +103,9 @@ agent-eval run \
 |------|------|------|
 | `openai:<模型名>` | 直接使用 OpenAI 模型 | `openai:gpt-4o-mini` |
 | `<模块路径>:<类名>` | 加载自定义 Agent 类 | `my_agent:MyAgent` |
+| `<模块路径>:<工厂函数>` | 调用工厂函数获得 Agent 实例 | `my_agent:create_agent` |
 
-CLI 通过 `create_agent()`（`agent_eval/cli/main.py:113`）动态 import 并实例化第三方 Agent，包装成 `CallableAgent`。
+CLI 通过 `create_agent()`（`agent_eval/cli/main.py:113`）动态 import 第三方 Agent，包装成 `CallableAgent`，并保留 `generate/chat/act` 三类能力。
 
 ### 示例第三方 Agent
 

@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -21,7 +22,7 @@ class MultiTurnPlugin(BasePlugin):
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
         self.max_turns = config.get("max_turns", 10)
-        self.conversation_file = config.get("conversation_file", "scenarios/multi_turn.yaml")
+        self.conversation_file = resolve_config_path(config.get("conversation_file", "scenarios/multi_turn.yaml"), config)
         self._load_conversations()
         self._init_judges(config.get("judges", []))
     

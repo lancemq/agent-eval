@@ -3,6 +3,7 @@
 import time
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -23,8 +24,9 @@ class ToolUsePlugin(BasePlugin):
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
         self.max_turns = config.get("max_turns", 10)
-        self.scenario_file = config.get("scenario_file", "scenarios/tool_use.yaml")
+        self.scenario_file = resolve_config_path(config.get("scenario_file", "scenarios/tool_use.yaml"), config)
         self.sandbox_type = config.get("sandbox", "local")
+        self.sandbox_config = config.get("sandbox_config", {})
         self._load_scenarios()
         self._init_environment()
         self._init_judges(config.get("judges", []))
@@ -67,7 +69,12 @@ class ToolUsePlugin(BasePlugin):
     
     def _init_environment(self) -> None:
         from agent_eval.sandbox.factory import SandboxFactory
-        self.env = SandboxFactory.create(self.sandbox_type)
+        self.env = SandboxFactory.create(self.sandbox_type, self.sandbox_config)
+        self.env.setup()
+
+    def teardown(self) -> None:
+        if self.env:
+            self.env.teardown()
     
     def _init_judges(self, judge_configs: List[Dict]) -> None:
         from agent_eval.judges.panel import MultiJudgePanel

@@ -9,6 +9,7 @@ from agent_eval.plugins.base import (
     PluginRegistry,
     register_plugin,
 )
+from agent_eval.utils import resolve_config_path
 
 
 def test_evaluation_type_values():
@@ -218,3 +219,10 @@ def test_plugin_list_plugins():
     assert info["type"] == "dynamic"
     assert "dim1" in info["dimensions"]
     assert info["description"] == "Test listing"
+
+
+def test_resolve_config_path_uses_config_dir(tmp_path):
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    resolved = resolve_config_path("scenarios/tool_use.yaml", {"_config_dir": str(config_dir)})
+    assert resolved == str(config_dir / "scenarios" / "tool_use.yaml")

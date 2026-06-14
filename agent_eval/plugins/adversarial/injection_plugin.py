@@ -2,6 +2,7 @@
 
 from typing import Any, Dict, List
 from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalContext, EvalResult, register_plugin
+from agent_eval.utils import resolve_config_path
 
 
 @register_plugin
@@ -19,7 +20,7 @@ class InjectionPlugin(BasePlugin):
     
     def setup(self, config: Dict[str, Any]) -> None:
         super().setup(config)
-        self.injection_file = config.get("injection_file", "attacks/injection.yaml")
+        self.injection_file = resolve_config_path(config.get("injection_file", "attacks/injection.yaml"), config)
         self.judge_config = config.get("judge", {"type": "injection_detection"})
         self._load_injections()
         self._init_judge()

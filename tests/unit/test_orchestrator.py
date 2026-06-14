@@ -172,6 +172,38 @@ class GenerateFailingPlugin(BasePlugin):
         type(self).teardown_count += 1
 
 
+@register_plugin
+class FlakyPlugin(BasePlugin):
+    name = "flaky_plugin"
+    evaluation_type = EvaluationType.CUSTOM
+    supported_dimensions = ["retry"]
+
+    def setup(self, config):
+        self.calls = 0
+
+    def generate_tasks(self, context):
+        return [{"task_id": "flaky"}]
+
+    def execute_task(self, task, context):
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("temporary failure")
+        return "ok"
+
+    def evaluate(self, task, output, context):
+        return EvalResult(
+            plugin_name=self.name,
+            evaluation_type=self.evaluation_type,
+            score=1.0,
+            raw_score={"output": output},
+            details={},
+            artifacts=[],
+            passed=True,
+            execution_time_ms=0,
+            task_id=task["task_id"],
+        )
+
+
 def test_orchestrator_initialization():
     from agent_eval.config import OrchestratorConfig
     config = OrchestratorConfig(max_workers=2)
@@ -358,6 +390,21 @@ def test_task_results_are_serialized_and_restored():
 
     assert len(restored.task_results["mock_plugin"]) == 3
     assert restored.task_results["mock_plugin"][0]["plugin_name"] == "mock_plugin"
+
+
+def test_orchestrator_retries_failed_tasks_before_scoring_failure():
+    from agent_eval.config import OrchestratorConfig
+
+    agent = MagicMock()
+    agent.name = "test_agent"
+    agent.version = "1.0"
+
+    orch = EvaluationOrchestrator(OrchestratorConfig(max_task_retries=1))
+    report = orch.run_evaluation(agent, ["flaky_plugin"])
+
+    result = report.task_results["flaky_plugin"][0]
+    assert result["passed"] is True
+    assert result["details"]["attempt"] == 2
 
 
 def test_evaluation_report():

@@ -3,9 +3,10 @@
 import logging
 import time
 import uuid
+import threading
 from datetime import datetime, timezone
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from typing import Any, Dict, List, Tuple
 
 from agent_eval.plugins.base import BasePlugin, EvalContext, EvalResult, PluginRegistry
 from agent_eval.orchestrator.agent import AgentUnderTest
@@ -24,6 +25,11 @@ class EvaluationOrchestrator:
         self.task_queue = TaskQueue({"backend": self.config.queue_backend})
         self.result_store = ResultStore(self.config.storage)
         self.hooks = HookManager()
+        self._agent_semaphore = (
+            threading.Semaphore(self.config.agent_concurrency)
+            if getattr(self.config, "agent_concurrency", 0)
+            else None
+        )
         self._setup_logging()
 
     def _setup_logging(self) -> None:
@@ -108,6 +114,10 @@ class EvaluationOrchestrator:
             task_ids = self.task_queue.enqueue_batch(
                 tasks, priority=context.task_config.get("priority", "normal")
             )
+            for task_id in task_ids:
+                task = self.task_queue.get(task_id)
+                if task:
+                    task.max_retries = getattr(self.config, "max_task_retries", 3)
 
             plugin_results = []
             max_workers = self.config.max_workers
@@ -116,35 +126,47 @@ class EvaluationOrchestrator:
                 futures = {}
                 for task_id in task_ids:
                     task = self.task_queue.get(task_id)
+                    if not task:
+                        raise ValueError(f"Task {task_id} not found")
                     future = executor.submit(
-                        self._execute_single_task, plugin, task.data, context
+                        self._execute_single_task,
+                        plugin,
+                        task.data,
+                        context,
+                        task.retries + 1,
                     )
                     futures[future] = task_id
 
-                for future in as_completed(futures):
-                    task_id = futures[future]
-                    try:
-                        result = future.result()
-                        plugin_results.append(result)
-                        self.task_queue.complete(task_id, result)
-                        self.hooks.trigger("task_complete", task_id, result)
-                        self.logger.debug(f"Task {task_id} completed: {result.score:.3f}")
-                    except Exception as e:
-                        plugin_results.append(EvalResult(
-                            plugin_name=plugin.name,
-                            evaluation_type=plugin.evaluation_type,
-                            score=0.0,
-                            raw_score={"error": str(e)},
-                            details={},
-                            artifacts=[],
-                            passed=False,
-                            execution_time_ms=0,
-                            task_id=task_id,
-                            error=str(e),
-                        ))
-                        self.task_queue.fail(task_id, str(e))
-                        self.hooks.trigger("task_failed", task_id, e)
-                        self.logger.error(f"Task {task_id} failed: {e}")
+                while futures:
+                    done, _ = wait(futures, return_when=FIRST_COMPLETED)
+                    for future in done:
+                        task_id = futures.pop(future)
+                        try:
+                            result, attempt = future.result()
+                            plugin_results.append(result)
+                            self.task_queue.complete(task_id, result)
+                            self.hooks.trigger("task_complete", task_id, result)
+                            self.logger.debug(f"Task {task_id} completed on attempt {attempt}: {result.score:.3f}")
+                        except Exception as e:
+                            self.task_queue.fail(task_id, str(e))
+                            task = self.task_queue.get(task_id)
+                            if task and task.status.value == "pending":
+                                self.logger.warning(
+                                    f"Task {task_id} failed on attempt {task.retries}: {e}; retrying"
+                                )
+                                retry_future = executor.submit(
+                                    self._execute_single_task,
+                                    plugin,
+                                    task.data,
+                                    context,
+                                    task.retries + 1,
+                                )
+                                futures[retry_future] = task_id
+                            else:
+                                attempts = (task.retries + 1) if task else 1
+                                plugin_results.append(self._failure_result(plugin, task_id, str(e), attempts))
+                                self.hooks.trigger("task_failed", task_id, e)
+                                self.logger.error(f"Task {task_id} failed after {attempts} attempts: {e}")
 
             all_results[plugin.name] = plugin_results
             self.logger.info(f"Plugin '{plugin.name}': {len(plugin_results)} tasks evaluated")
@@ -152,12 +174,32 @@ class EvaluationOrchestrator:
         return all_results
 
     def _execute_single_task(
-        self, plugin: BasePlugin, task: Dict[str, Any], context: EvalContext
-    ) -> EvalResult:
+        self, plugin: BasePlugin, task: Dict[str, Any], context: EvalContext, attempt: int = 1
+    ) -> Tuple[EvalResult, int]:
         self.hooks.trigger("task_execute", plugin, task)
-        output = plugin.execute_task(task, context)
+        if self._agent_semaphore:
+            with self._agent_semaphore:
+                output = plugin.execute_task(task, context)
+        else:
+            output = plugin.execute_task(task, context)
         self.hooks.trigger("task_evaluate", plugin, task, output)
-        return plugin.evaluate(task, output, context)
+        result = plugin.evaluate(task, output, context)
+        result.details.setdefault("attempt", attempt)
+        return result, attempt
+
+    def _failure_result(self, plugin: BasePlugin, task_id: str, error: str, attempts: int) -> EvalResult:
+        return EvalResult(
+            plugin_name=plugin.name,
+            evaluation_type=plugin.evaluation_type,
+            score=0.0,
+            raw_score={"error": error, "attempts": attempts},
+            details={"attempts": attempts},
+            artifacts=[],
+            passed=False,
+            execution_time_ms=0,
+            task_id=task_id,
+            error=error,
+        )
 
     def _generate_report(
         self,

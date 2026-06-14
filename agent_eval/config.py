@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 class OrchestratorConfig:
     """Configuration for the orchestrator."""
     max_workers: int = 4
+    max_task_retries: int = 3
+    agent_concurrency: int = 0
     queue_backend: str = "memory"
     storage: Dict[str, Any] = field(default_factory=lambda: {"type": "json", "output_dir": "./eval_results"})
     log_level: str = "INFO"
@@ -38,6 +40,7 @@ class EvaluationConfig:
     plugins: Dict[str, PluginConfig] = field(default_factory=dict)
     eval_config: Dict[str, Any] = field(default_factory=dict)
     report: Dict[str, Any] = field(default_factory=lambda: {"formats": ["json", "html"], "output_dir": "./eval_results"})
+    config_dir: str = ""
 
 
 def load_config(path: str) -> EvaluationConfig:
@@ -60,14 +63,16 @@ def load_config(path: str) -> EvaluationConfig:
     else:
         raise ValueError(f"Unsupported config format: {ext}")
 
-    return parse_config(raw)
+    return parse_config(raw, base_dir=os.path.dirname(os.path.abspath(path)))
 
 
-def parse_config(raw: Dict[str, Any]) -> EvaluationConfig:
+def parse_config(raw: Dict[str, Any], base_dir: str = "") -> EvaluationConfig:
     """Parse raw dict into EvaluationConfig."""
     orch_raw = raw.get("orchestrator", {})
     orch = OrchestratorConfig(
         max_workers=orch_raw.get("max_workers", 4),
+        max_task_retries=orch_raw.get("max_task_retries", 3),
+        agent_concurrency=orch_raw.get("agent_concurrency", 0),
         queue_backend=orch_raw.get("queue_backend", "memory"),
         storage=orch_raw.get("storage", {"type": "json", "output_dir": "./eval_results"}),
         log_level=orch_raw.get("log_level", "INFO"),
@@ -102,4 +107,5 @@ def parse_config(raw: Dict[str, Any]) -> EvaluationConfig:
         plugins=plugins,
         eval_config=raw.get("eval_config", {}),
         report=report,
+        config_dir=base_dir,
     )
