@@ -1,6 +1,6 @@
 """Scorer factory for creating scorers from configuration."""
 
-from typing import Any, Callable, Dict, Type, Union
+from typing import Any, Dict, Type, Union
 from agent_eval.scorers.base import BaseScorer
 
 # Import all scorers to register them

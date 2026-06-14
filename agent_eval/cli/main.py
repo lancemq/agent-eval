@@ -7,7 +7,7 @@ import os
 from typing import Any, Dict
 
 from agent_eval.config import load_config
-from agent_eval.orchestrator import EvaluationOrchestrator, OpenAIAgent, CallableAgent, AgentUnderTest
+from agent_eval.orchestrator import EvaluationOrchestrator, AgentUnderTest
 from agent_eval.plugins.base import PluginRegistry
 from agent_eval.reporting import ReportGenerator, compare_reports
 
@@ -115,14 +115,22 @@ def cmd_report(args: argparse.Namespace) -> None:
 
 
 def create_agent(agent_str: str, config: Dict[str, Any]) -> AgentUnderTest:
-    if agent_str.startswith("openai:"):
-        model = agent_str.split(":", 1)[1]
-        cfg = {k: v for k, v in config.items() if k != "model"}
-        return OpenAIAgent(model=model, **cfg)
-    elif ":" in agent_str:
-        return CallableAgent.from_module(agent_str, config)
-    else:
-        raise ValueError(f"Invalid agent spec: '{agent_str}'. Use 'module:Class' or 'openai:model_name'")
+    """Create an agent from a specification string.
+
+    Supports:
+      openai:<model>           → OpenAI API agent
+      anthropic:<model>        → Anthropic Claude agent
+      ollama:<model>           → Ollama local model agent
+      http://<url>             → HTTP/REST API agent
+      http:<url>               → HTTP/REST API agent
+      langchain:<module>:<cls> → LangChain adapter
+      autogen:<module>:<cls>   → AutoGen adapter
+      crewai:<module>:<cls>    → CrewAI adapter
+      langgraph:<module>:<cls> → LangGraph adapter
+      <module>:<Class>         → Import and auto-wrap
+    """
+    from agent_eval.agents import AgentFactory
+    return AgentFactory.create(agent_str, config)
 
 
 def main() -> None:

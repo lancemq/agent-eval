@@ -37,6 +37,20 @@ from agent_eval.scorers import (
     EnsembleScorer,
 )
 
+# Expose universal agent integration
+from agent_eval.agents import (
+    AgentFactory,
+    AgentProtocol,
+    AgentAdapter,
+    FunctionAgent,
+    HTTPAgentAdapter,
+    LangChainAdapter,
+    AutoGenAdapter,
+    CrewAIAdapter,
+    LangGraphAdapter,
+    agent_type,
+)
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -72,4 +86,15 @@ __all__ = [
     "RegexScorer",
     "CustomRubricScorer",
     "EnsembleScorer",
+    # Agent integration
+    "AgentFactory",
+    "AgentProtocol",
+    "AgentAdapter",
+    "FunctionAgent",
+    "HTTPAgentAdapter",
+    "LangChainAdapter",
+    "AutoGenAdapter",
+    "CrewAIAdapter",
+    "LangGraphAdapter",
+    "agent_type",
 ]
