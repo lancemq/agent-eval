@@ -51,6 +51,17 @@ from agent_eval.agents import (
     agent_type,
 )
 
+# Trace system
+from agent_eval.trace import (
+    TraceRecord,
+    TraceStore,
+    TraceCollector,
+    TraceAnalyzer,
+    TracePlayer,
+    TaskGenerator,
+    DatasetBuilder,
+)
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -97,4 +108,12 @@ __all__ = [
     "CrewAIAdapter",
     "LangGraphAdapter",
     "agent_type",
+    # Trace system
+    "TraceRecord",
+    "TraceStore",
+    "TraceCollector",
+    "TraceAnalyzer",
+    "TracePlayer",
+    "TaskGenerator",
+    "DatasetBuilder",
 ]
