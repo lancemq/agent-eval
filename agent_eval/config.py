@@ -43,8 +43,13 @@ class EvaluationConfig:
     config_dir: str = ""
 
 
-def load_config(path: str) -> EvaluationConfig:
-    """Load configuration from file."""
+def load_config(path: str, validate: bool = True) -> EvaluationConfig:
+    """Load configuration from file.
+
+    Args:
+        path: Path to YAML or JSON config file
+        validate: If True, validate config before parsing (default: True)
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Config file not found: {path}")
 
@@ -62,6 +67,15 @@ def load_config(path: str) -> EvaluationConfig:
             raw = json.load(f)
     else:
         raise ValueError(f"Unsupported config format: {ext}")
+
+    if validate:
+        from agent_eval.config_schema import validate_config
+        result = validate_config(raw)
+        if not result.valid:
+            raise ValueError(result.format_errors())
+        for warning in result.warnings:
+            import logging
+            logging.getLogger("agent_eval.config").warning(warning)
 
     return parse_config(raw, base_dir=os.path.dirname(os.path.abspath(path)))
 

@@ -145,3 +145,50 @@ class PluginRegistry:
 def register_plugin(plugin_class: Type[BasePlugin]) -> Type[BasePlugin]:
     """Decorator to register a plugin."""
     return PluginRegistry.register(plugin_class)
+
+
+def discover_entry_point_plugins() -> Dict[str, str]:
+    """Discover third-party plugins registered via setuptools entry points.
+
+    Plugins can register themselves in pyproject.toml:
+
+        [project.entry-points."agent_eval.plugins"]
+        my_plugin = "my_package:MyPlugin"
+
+    Returns:
+        Dict mapping plugin name to discovered module:class string.
+    """
+    discovered: Dict[str, str] = {}
+    try:
+        from importlib.metadata import entry_points
+    except ImportError:
+        return discovered
+
+    try:
+        eps = entry_points()
+        # Python 3.12+ returnsSelectable
+        if hasattr(eps, "select"):
+            plugin_eps = eps.select(group="agent_eval.plugins")
+        else:
+            plugin_eps = eps.get("agent_eval.plugins", [])
+    except Exception:
+        return discovered
+
+    for ep in plugin_eps:
+        try:
+            plugin_cls = ep.load()
+            if issubclass(plugin_cls, BasePlugin) and plugin_cls.name:
+                PluginRegistry.register(plugin_cls)
+                discovered[plugin_cls.name] = f"{ep.value}"
+            else:
+                import logging
+                logging.getLogger("agent_eval.plugins").warning(
+                    f"Entry point '{ep.name}' -> {ep.value} is not a valid BasePlugin"
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger("agent_eval.plugins").warning(
+                f"Failed to load entry point '{ep.name}': {e}"
+            )
+
+    return discovered

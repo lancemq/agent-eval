@@ -30,7 +30,34 @@ class EvaluationOrchestrator:
             if getattr(self.config, "agent_concurrency", 0)
             else None
         )
+        self._cancelled = False
+        self._progress_callbacks: List = []
         self._setup_logging()
+
+    @property
+    def is_cancelled(self) -> bool:
+        """Check if evaluation has been cancelled."""
+        return self._cancelled
+
+    def cancel(self) -> None:
+        """Request cancellation of the running evaluation."""
+        self._cancelled = True
+        self.logger.info("Evaluation cancellation requested")
+
+    def on_progress(self, callback) -> None:
+        """Register a progress callback.
+
+        Callback signature: callback(completed: int, total: int, current_result: Optional[EvalResult])
+        """
+        self._progress_callbacks.append(callback)
+
+    def _notify_progress(self, completed: int, total: int, result=None) -> None:
+        """Notify all registered progress callbacks."""
+        for cb in self._progress_callbacks:
+            try:
+                cb(completed, total, result)
+            except Exception as e:
+                self.logger.warning(f"Progress callback error: {e}")
 
     def _setup_logging(self) -> None:
         level = getattr(logging, self.config.log_level.upper(), logging.INFO)
@@ -106,6 +133,10 @@ class EvaluationOrchestrator:
         all_results: Dict[str, List[EvalResult]] = {}
 
         for plugin in plugins:
+            if self._cancelled:
+                self.logger.warning("Evaluation cancelled, skipping plugin '%s'", plugin.name)
+                break
+
             self.logger.info(f"Generating tasks for plugin '{plugin.name}'...")
             tasks = plugin.generate_tasks(context)
             self.hooks.trigger("task_generated", plugin, tasks)
@@ -119,12 +150,24 @@ class EvaluationOrchestrator:
                 if task:
                     task.max_retries = getattr(self.config, "max_task_retries", 3)
 
+            # Sort task IDs by priority for execution ordering
+            sorted_task_ids = sorted(
+                task_ids,
+                key=lambda tid: self.task_queue.get(tid) or type("T", (), {"priority": type("P", (), {"value": 0})()})(),
+                reverse=True,  # Higher priority first
+            )
+
             plugin_results = []
             max_workers = self.config.max_workers
+            total_tasks = len(sorted_task_ids)
+            completed_count = 0
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {}
-                for task_id in task_ids:
+                # Submit in priority order
+                for task_id in sorted_task_ids:
+                    if self._cancelled:
+                        break
                     task = self.task_queue.get(task_id)
                     if not task:
                         raise ValueError(f"Task {task_id} not found")
@@ -138,6 +181,13 @@ class EvaluationOrchestrator:
                     futures[future] = task_id
 
                 while futures:
+                    if self._cancelled:
+                        # Cancel pending futures
+                        for f in futures:
+                            f.cancel()
+                        self.logger.warning("Evaluation cancelled mid-run, %d tasks incomplete", len(futures))
+                        break
+
                     done, _ = wait(futures, return_when=FIRST_COMPLETED)
                     for future in done:
                         task_id = futures.pop(future)
@@ -146,6 +196,8 @@ class EvaluationOrchestrator:
                             plugin_results.append(result)
                             self.task_queue.complete(task_id, result)
                             self.hooks.trigger("task_complete", task_id, result)
+                            completed_count += 1
+                            self._notify_progress(completed_count, total_tasks, result)
                             self.logger.debug(f"Task {task_id} completed on attempt {attempt}: {result.score:.3f}")
                         except Exception as e:
                             self.task_queue.fail(task_id, str(e))
