@@ -16,6 +16,10 @@ htmlcov/
 venv/
 .venv/
 
+# Frontend
+node_modules/
+web/dist/
+
 # IDE
 .vscode/
 .idea/
@@ -32,3 +36,6 @@ eval_results/
 # Config with secrets
 configs/*.local.yaml
 results/
+
+# Local Web UI runtime config (may contain secrets)
+.agent-eval/

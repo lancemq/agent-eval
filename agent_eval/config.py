@@ -38,6 +38,7 @@ class EvaluationConfig:
     orchestrator: OrchestratorConfig = field(default_factory=OrchestratorConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     plugins: Dict[str, PluginConfig] = field(default_factory=dict)
+    plugin_modules: list[str] = field(default_factory=list)
     eval_config: Dict[str, Any] = field(default_factory=dict)
     report: Dict[str, Any] = field(default_factory=lambda: {"formats": ["json", "html"], "output_dir": "./eval_results"})
     config_dir: str = ""
@@ -119,6 +120,7 @@ def parse_config(raw: Dict[str, Any], base_dir: str = "") -> EvaluationConfig:
         orchestrator=orch,
         agent=agent,
         plugins=plugins,
+        plugin_modules=raw.get("plugin_modules", []),
         eval_config=raw.get("eval_config", {}),
         report=report,
         config_dir=base_dir,

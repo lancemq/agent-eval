@@ -2,14 +2,13 @@
 
 import argparse
 import json
-import sys
 import os
-from typing import Any, Dict
+import sys
 
 from agent_eval.config import load_config
-from agent_eval.orchestrator import EvaluationOrchestrator, AgentUnderTest
 from agent_eval.plugins.base import PluginRegistry
 from agent_eval.reporting import ReportGenerator, compare_reports
+from agent_eval.runner import run_evaluation_from_config
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -42,41 +41,34 @@ def create_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--output-dir", default="./eval_results", help="Output directory")
     report_parser.add_argument("--formats", nargs="+", default=["json", "html", "markdown"], help="Output formats")
 
+    # ui command
+    ui_parser = subparsers.add_parser("ui", help="Start the local Web UI")
+    ui_parser.add_argument("--host", default="127.0.0.1", help="Host to bind")
+    ui_parser.add_argument("--port", type=int, default=8080, help="Port to bind")
+    ui_parser.add_argument("--output-dir", default="./eval_results", help="Output directory")
+    ui_parser.add_argument("--reload", action="store_true", help="Enable uvicorn reload")
+
     return parser
 
 
 def cmd_run(args: argparse.Namespace) -> None:
     config = load_config(args.config)
-
-    if args.plugins:
-        plugin_names = args.plugins
-    else:
-        plugin_names = [name for name, pc in config.plugins.items() if pc.enabled]
-
-    agent = create_agent(args.agent, config.agent.config)
-    orch_config = config.orchestrator
-    orch_config.storage["output_dir"] = args.output
-
-    orchestrator = EvaluationOrchestrator(orch_config)
-    plugin_configs = {
-        name: {**pc.config, "_config_dir": config.config_dir}
-        for name, pc in config.plugins.items()
-    }
-    report = orchestrator.run_evaluation(agent, plugin_names, config.eval_config, plugin_configs)
-
-    generator = ReportGenerator(args.output)
-    generated = generator.generate(report, config.report.get("formats", ["json", "html", "markdown"]))
+    result = run_evaluation_from_config(
+        config,
+        agent_spec=args.agent,
+        plugin_names=args.plugins or None,
+        output_dir=args.output,
+    )
 
     print("\nEvaluation complete!")
-    print(f"  Overall Score: {report.summary.get('overall_score', 0):.3f}")
-    print(f"  Pass Rate: {report.summary.get('pass_rate', 0):.1%}")
+    print(f"  Overall Score: {result.report.summary.get('overall_score', 0):.3f}")
+    print(f"  Pass Rate: {result.report.summary.get('pass_rate', 0):.1%}")
     print("  Reports generated:")
-    for fmt, path in generated.items():
+    for fmt, path in result.generated_reports.items():
         print(f"    {fmt}: {path}")
 
 
 def cmd_list(args: argparse.Namespace) -> None:
-
     plugins = PluginRegistry.list_plugins()
 
     if args.json:
@@ -114,23 +106,25 @@ def cmd_report(args: argparse.Namespace) -> None:
         print(f"  {fmt}: {path}")
 
 
-def create_agent(agent_str: str, config: Dict[str, Any]) -> AgentUnderTest:
-    """Create an agent from a specification string.
+def cmd_ui(args: argparse.Namespace) -> None:
+    try:
+        import uvicorn
+    except ImportError:
+        print("Web UI dependencies are not installed. Install with: pip install -e '.[web]'")
+        sys.exit(1)
 
-    Supports:
-      openai:<model>           → OpenAI API agent
-      anthropic:<model>        → Anthropic Claude agent
-      ollama:<model>           → Ollama local model agent
-      http://<url>             → HTTP/REST API agent
-      http:<url>               → HTTP/REST API agent
-      langchain:<module>:<cls> → LangChain adapter
-      autogen:<module>:<cls>   → AutoGen adapter
-      crewai:<module>:<cls>    → CrewAI adapter
-      langgraph:<module>:<cls> → LangGraph adapter
-      <module>:<Class>         → Import and auto-wrap
-    """
-    from agent_eval.agents import AgentFactory
-    return AgentFactory.create(agent_str, config)
+    print(f"Starting AgentEval Web UI at http://{args.host}:{args.port}")
+    if args.host != "127.0.0.1":
+        print("Warning: the Web UI can execute local agent modules. Do not expose it to untrusted networks.")
+
+    from agent_eval.web.app import create_app
+
+    uvicorn.run(
+        create_app(output_dir=args.output_dir),
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
 
 
 def main() -> None:
@@ -145,6 +139,8 @@ def main() -> None:
         cmd_compare(args)
     elif args.command == "report":
         cmd_report(args)
+    elif args.command == "ui":
+        cmd_ui(args)
     else:
         parser.print_help()
 

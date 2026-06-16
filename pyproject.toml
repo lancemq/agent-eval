@@ -45,10 +45,21 @@ judge = [
 sandbox = [
     "docker>=6.0",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.0",
+    "sse-starlette>=2.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "ruff>=0.1",
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.0",
+    "sse-starlette>=2.0",
 ]
 
 [project.urls]
@@ -64,7 +75,15 @@ dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
     "ruff>=0.4",
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.0",
+    "sse-starlette>=2.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["agent_eval", "agent_eval.*"]
+
+[tool.setuptools.package-data]
+agent_eval = ["web/static/**/*"]

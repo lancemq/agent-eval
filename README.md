@@ -130,6 +130,29 @@ agent-eval run \
 | `--output` | `-o` | 否 | 结果输出目录，默认 `./eval_results` |
 | `--verbose` | `-v` | 否 | 详细日志输出 |
 
+### agent-eval ui — 启动本地 Web UI
+
+Web UI 提供配置编辑、插件选择、运行监控、报告查看和多报告对比。
+
+```bash
+# 安装 Web 可选依赖
+uv sync --extra web --group dev
+
+# 启动本地 UI
+uv run agent-eval ui --host 127.0.0.1 --port 8080
+```
+
+前端开发：
+
+```bash
+cd web
+npm install
+npm run dev       # Vite 开发服务
+npm run build     # 构建到 agent_eval/web/static
+```
+
+安全说明：Web UI 是本地可信开发工具。`module:Class` Agent 会导入并执行本地 Python 代码，不要将 UI 暴露到不可信网络，也不要运行不可信配置。API key 建议通过环境变量提供，不要写入前端配置。
+
 ### agent-eval list — 列出可用插件
 
 ```bash

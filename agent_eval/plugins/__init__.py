@@ -9,6 +9,7 @@ from agent_eval.plugins.base import (
 from agent_eval.plugins.benchmark import mmlu_plugin, humaneval_plugin, gsm8k_plugin
 from agent_eval.plugins.dynamic import tool_use_plugin, multi_turn_plugin, coding_plugin
 from agent_eval.plugins.adversarial import jailbreak_plugin, injection_plugin, bias_plugin
+from agent_eval.plugins import custom_eval_plugin
 
 # Discover third-party plugins via setuptools entry points
 discover_entry_point_plugins()
@@ -30,4 +31,5 @@ __all__ = [
     "jailbreak_plugin",
     "injection_plugin",
     "bias_plugin",
+    "custom_eval_plugin",
 ]
