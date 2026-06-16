@@ -8,14 +8,9 @@ type Props = {
 
 const nav = [
   ['dashboard', '总览'],
-  ['run', '新建评测'],
-  ['traces', 'Trace'],
-  ['scorers', 'Scorer'],
-  ['plugins', '插件'],
-  ['settings', '配置'],
-  ['monitor', '运行监控'],
-  ['reports', '报告'],
-  ['compare', '对比'],
+  ['runs', '评测'],
+  ['resources', '资源'],
+  ['settings', '设置'],
 ]
 
 export function Layout({ page, setPage, children }: Props) {

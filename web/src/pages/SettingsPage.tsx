@@ -57,10 +57,7 @@ export function SettingsPage({ setPage }: { setPage: (page: string) => void }) {
     <section>
       <div className="page-header">
         <h2>配置中心</h2>
-        <div className="actions-inline">
-          <button onClick={() => setPage('traces')}>返回 Trace</button>
-          <button className="primary" onClick={save}>保存配置</button>
-        </div>
+        <button className="primary" onClick={save}>保存配置</button>
       </div>
       {message && <p className="message">{message}</p>}
       <div className="two-column">
