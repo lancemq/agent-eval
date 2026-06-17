@@ -5,9 +5,10 @@ import type { PluginInfo, ReportListItem } from '../api/types'
 type Props = {
   setPage: (page: string) => void
   onNewRun: () => void
+  onOpenWizard: () => void
 }
 
-export function DashboardPage({ setPage, onNewRun }: Props) {
+export function DashboardPage({ setPage, onNewRun, onOpenWizard }: Props) {
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [reports, setReports] = useState<ReportListItem[]>([])
   const [scorerCount, setScorerCount] = useState(0)
@@ -89,7 +90,8 @@ export function DashboardPage({ setPage, onNewRun }: Props) {
           )}
           <h3 className="quick-title">快捷入口</h3>
           <div className="quick-links">
-            <button className="quick-link" onClick={() => setPage('resources')}>Trace 生成 Eval</button>
+            <button className="quick-link" onClick={onOpenWizard}>Langfuse Trace 生成评测</button>
+            <button className="quick-link" onClick={() => setPage('resources')}>资源中心</button>
             <button className="quick-link" onClick={() => setPage('runs')}>查看报告</button>
             <button className="quick-link" onClick={() => setPage('settings')}>配置中心</button>
           </div>

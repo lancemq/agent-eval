@@ -108,7 +108,7 @@ class AgentFactory:
         # Known provider prefixes
         if spec.startswith("openai:"):
             model = spec.split(":", 1)[1]
-            return OpenAIAgent(model=model, **config)
+            return OpenAIAgent(model=model, **{k: v for k, v in config.items() if k != "model"})
 
         if spec.startswith(("anthropic:", "claude:")):
             return cls._create_provider_agent("anthropic", spec.split(":", 1)[1], config)

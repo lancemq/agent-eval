@@ -49,8 +49,12 @@ export function SettingsPage({ setPage }: { setPage: (page: string) => void }) {
   }
 
   async function testLangfuse() {
-    const result = await api.testLangfuse()
-    setMessage(`Langfuse 连接成功：${result.host}，检查 sessions ${result.sessions_checked} 条`)
+    try {
+      const result = await api.testLangfuse()
+      setMessage(`Langfuse 连接成功：${result.host}，检查 sessions ${result.sessions_checked} 条`)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '连接测试失败')
+    }
   }
 
   return (

@@ -71,9 +71,13 @@ function TraceTab({ selectedTraceIds, setSelectedTraceIds, selectedScorers, setS
   async function createEval() {
     if (selectedTraceIds.length === 0) return setMessage('请至少选择一个 trace')
     if (selectedScorers.length === 0) return setMessage('请至少选择一个 scorer')
-    const result = await api.traceEvalConfig({ trace_ids: selectedTraceIds, scorers: selectedScorers, eval_id: `trace_eval_${Date.now()}`, name: 'Trace-based Evaluation', dimensions: ['trace_quality'], threshold: 0.7, aggregation: 'weighted' })
-    setDraftEvalConfig(result.custom_eval)
-    onEvalCreated()
+    try {
+      const result = await api.traceEvalConfig({ trace_ids: selectedTraceIds, scorers: selectedScorers, eval_id: `trace_eval_${Date.now()}`, name: 'Trace-based Evaluation', dimensions: ['trace_quality'], threshold: 0.7, aggregation: 'weighted' })
+      setDraftEvalConfig(result.custom_eval)
+      onEvalCreated()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '生成评测配置失败')
+    }
   }
 
   async function testLangfuse() { const result = await api.testLangfuse(); setMessage(`Langfuse 连接成功：${result.host}，检查 sessions ${result.sessions_checked} 条`) }
@@ -83,9 +87,13 @@ function TraceTab({ selectedTraceIds, setSelectedTraceIds, selectedScorers, setS
   async function createLangfuseEval() {
     if (selectedLangfuseTraceIds.length === 0) return setMessage('请至少选择一个 Langfuse trace')
     if (selectedScorers.length === 0) return setMessage('请至少选择一个 scorer')
-    const result = await api.langfuseTraceEvalConfig({ trace_ids: selectedLangfuseTraceIds, scorers: selectedScorers, eval_id: `langfuse_eval_${Date.now()}`, name: 'Langfuse Trace Evaluation', dimensions: ['langfuse_quality'], threshold: 0.7, aggregation: 'weighted' })
-    setDraftEvalConfig(result.custom_eval)
-    onEvalCreated()
+    try {
+      const result = await api.langfuseTraceEvalConfig({ trace_ids: selectedLangfuseTraceIds, scorers: selectedScorers, eval_id: `langfuse_eval_${Date.now()}`, name: 'Langfuse Trace Evaluation', dimensions: ['langfuse_quality'], threshold: 0.7, aggregation: 'weighted' })
+      setDraftEvalConfig(result.custom_eval)
+      onEvalCreated()
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '生成评测配置失败')
+    }
   }
 
   return (
