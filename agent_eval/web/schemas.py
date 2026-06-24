@@ -61,3 +61,4 @@ class LangfuseConfigRequest(BaseModel):
 class SettingsRequest(BaseModel):
     run_defaults: Dict[str, Any] = Field(default_factory=dict)
     langfuse: Dict[str, Any] = Field(default_factory=dict)
+    eval_model: Dict[str, Any] = Field(default_factory=dict)

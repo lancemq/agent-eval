@@ -1,31 +1,42 @@
 import type { ReactNode } from 'react'
+import { NavLink } from 'react-router-dom'
 
 type Props = {
-  page: string
-  setPage: (page: string) => void
   children: ReactNode
 }
 
-const nav = [
-  ['dashboard', '总览'],
-  ['runs', '评测'],
-  ['resources', '资源'],
-  ['settings', '设置'],
+const mainNav: Array<[string, string]> = [
+  ['/', '总览'],
+  ['/run', '新建评测'],
+  ['/live', '运行监测'],
+  ['/library', '资源库'],
+  ['/reports', '报告'],
 ]
 
-export function Layout({ page, setPage, children }: Props) {
+const bottomNav: Array<[string, string]> = [
+  ['/settings', '设置'],
+]
+
+export function Layout({ children }: Props) {
   return (
     <div className="shell">
       <aside className="sidebar">
         <h1>AgentEval</h1>
         <p>本地评测控制台</p>
         <nav>
-          {nav.map(([key, label]) => (
-            <button key={key} className={page === key ? 'active' : ''} onClick={() => setPage(key)}>
+          {mainNav.map(([to, label]) => (
+            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'active' : '')}>
               {label}
-            </button>
+            </NavLink>
           ))}
         </nav>
+        <div className="sidebar-bottom">
+          {bottomNav.map(([to, label]) => (
+            <NavLink key={to} to={to} className={({ isActive }) => (isActive ? 'active' : '')}>
+              {label}
+            </NavLink>
+          ))}
+        </div>
       </aside>
       <main className="content">{children}</main>
     </div>

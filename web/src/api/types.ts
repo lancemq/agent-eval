@@ -1,14 +1,29 @@
+export type ParamSpec = {
+  name: string
+  type: string
+  default: any
+  description: string
+}
+
 export type PluginInfo = {
   name: string
   version: string
   type: string
   dimensions: string[]
   description: string
+  params?: ParamSpec[]
+  use_cases?: string[]
+  example?: Record<string, any>
 }
 
 export type ScorerInfo = {
   type: string
   description: string
+  params?: ParamSpec[]
+  requires?: string[]
+  dimensions?: string[]
+  use_cases?: string[]
+  example?: Record<string, any>
 }
 
 export type ReportSummary = {
@@ -149,13 +164,29 @@ export type RunDefaults = {
   }
 }
 
+export type EvalModelConfig = {
+  model: string
+  base_url: string
+  timeout: number
+  api_key_configured: boolean
+}
+
+export type EvalModelConfigUpdate = {
+  model: string
+  api_key: string
+  base_url: string
+  timeout: number
+}
+
 export type WebSettings = {
   run_defaults: RunDefaults
   trace: { trace_dir: string }
   langfuse: LangfuseConfig
+  eval_model: EvalModelConfig
 }
 
 export type WebSettingsUpdate = {
   run_defaults: RunDefaults
   langfuse: LangfuseConfigUpdate
+  eval_model: EvalModelConfigUpdate
 }

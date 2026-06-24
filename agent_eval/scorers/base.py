@@ -53,9 +53,25 @@ Evaluate the output carefully and provide:
 Score format: SCORE: <number>
 Reason format: REASON: <text>"""
 
-    def _call_llm(self, prompt: str, model: str = "gpt-4o-mini") -> str:
+    def _call_llm(self, prompt: str, model: str = None) -> str:
         from agent_eval.llm_client import LLMClient
-        client = LLMClient(model=model, timeout=60.0, max_retries=3)
+
+        # Try to load configured eval model (silently falls back to defaults)
+        api_key = None
+        base_url = None
+        try:
+            import os
+            from agent_eval.web.eval_model import EvalModelConfigStore
+            cfg = EvalModelConfigStore(os.getcwd()).load_for_scorer()
+            if model is None:
+                model = cfg.get("model") or "gpt-4o-mini"
+            api_key = cfg.get("api_key") or None
+            base_url = cfg.get("base_url") or None
+        except Exception:
+            if model is None:
+                model = "gpt-4o-mini"
+
+        client = LLMClient(model=model, timeout=60.0, max_retries=3, api_key=api_key, base_url=base_url)
         response = client.chat(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,

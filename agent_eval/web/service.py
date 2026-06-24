@@ -17,6 +17,7 @@ from agent_eval.trace.schema import TraceRecord
 from agent_eval.trace.store import TraceStore
 from agent_eval.trace.task_generator import TaskGenerator
 from agent_eval.web.events import EventBus
+from agent_eval.web.eval_model import EvalModelConfigStore
 from agent_eval.web.langfuse import LangfuseClient, LangfuseConfigStore, langfuse_trace_to_task
 from agent_eval.web.settings import WebSettingsStore
 
@@ -124,6 +125,7 @@ class WebService:
         self.langfuse_config = LangfuseConfigStore(self.workspace)
         self.langfuse_client = LangfuseClient(self.langfuse_config)
         self.settings_store = WebSettingsStore(self.workspace)
+        self.eval_model_config = EvalModelConfigStore(self.workspace)
 
     def validate_config(self, raw_config: Dict[str, Any]) -> Dict[str, Any]:
         errors = []
@@ -265,12 +267,15 @@ class WebService:
             **settings,
             "trace": {"trace_dir": self.trace_dir},
             "langfuse": self.langfuse_config.load_masked(),
+            "eval_model": self.eval_model_config.load_masked(),
         }
 
     def save_settings(self, update: Dict[str, Any]) -> Dict[str, Any]:
         self.settings_store.save({"run_defaults": update.get("run_defaults", {})})
         if "langfuse" in update:
             self.langfuse_config.save(update["langfuse"])
+        if "eval_model" in update:
+            self.eval_model_config.save(update["eval_model"])
         return self.get_settings()
 
     def get_langfuse_config(self) -> Dict[str, Any]:

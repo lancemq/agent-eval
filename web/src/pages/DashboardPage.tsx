@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PluginInfo, ReportListItem } from '../api/types'
 
-type Props = {
-  setPage: (page: string) => void
-  onNewRun: () => void
-  onOpenWizard: () => void
-}
-
-export function DashboardPage({ setPage, onNewRun, onOpenWizard }: Props) {
+export function DashboardPage() {
+  const navigate = useNavigate()
   const [plugins, setPlugins] = useState<PluginInfo[]>([])
   const [reports, setReports] = useState<ReportListItem[]>([])
   const [scorerCount, setScorerCount] = useState(0)
@@ -32,7 +28,7 @@ export function DashboardPage({ setPage, onNewRun, onOpenWizard }: Props) {
           <h2>评测总览</h2>
           <p>快速发起、监控和分析你的 Agent 评测</p>
         </div>
-        <button className="primary hero-cta" onClick={onNewRun}>+ 新建评测</button>
+        <button className="primary hero-cta" onClick={() => navigate('/run')}>+ 新建评测</button>
       </div>
 
       <div className="metric-row">
@@ -61,7 +57,7 @@ export function DashboardPage({ setPage, onNewRun, onOpenWizard }: Props) {
             <p className="muted empty-hint">暂无报告，点击「新建评测」开始</p>
           ) : (
             reports.slice(0, 6).map((report) => (
-              <div className="report-item" key={report.run_id} onClick={() => setPage('runs')}>
+              <div className="report-item" key={report.run_id} onClick={() => navigate(`/reports/${report.run_id}`)}>
                 <div className="report-item-main">
                   <code>{report.run_id}</code>
                   <small className="muted">{report.agent_name}</small>
@@ -90,10 +86,10 @@ export function DashboardPage({ setPage, onNewRun, onOpenWizard }: Props) {
           )}
           <h3 className="quick-title">快捷入口</h3>
           <div className="quick-links">
-            <button className="quick-link" onClick={onOpenWizard}>Langfuse Trace 生成评测</button>
-            <button className="quick-link" onClick={() => setPage('resources')}>资源中心</button>
-            <button className="quick-link" onClick={() => setPage('runs')}>查看报告</button>
-            <button className="quick-link" onClick={() => setPage('settings')}>配置中心</button>
+            <button className="quick-link" onClick={() => navigate('/library/trace')}>从 Trace 生成评测</button>
+            <button className="quick-link" onClick={() => navigate('/library')}>资源中心</button>
+            <button className="quick-link" onClick={() => navigate('/reports')}>查看报告</button>
+            <button className="quick-link" onClick={() => navigate('/settings')}>配置中心</button>
           </div>
         </div>
       </div>

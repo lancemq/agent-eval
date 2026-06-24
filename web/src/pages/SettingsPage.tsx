@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
-import type { RunDefaults, WebSettings } from '../api/types'
+import type { EvalModelConfig, RunDefaults, WebSettings } from '../api/types'
 
 const fallbackRunDefaults: RunDefaults = {
   agent: 'openai:gpt-4o-mini',
@@ -14,9 +14,10 @@ const fallbackRunDefaults: RunDefaults = {
   },
 }
 
-export function SettingsPage({ setPage }: { setPage: (page: string) => void }) {
+export function SettingsPage() {
   const [settings, setSettings] = useState<WebSettings | null>(null)
   const [secret, setSecret] = useState('')
+  const [evalApiKey, setEvalApiKey] = useState('')
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -37,14 +38,20 @@ export function SettingsPage({ setPage }: { setPage: (page: string) => void }) {
     setSettings((current) => current ? { ...current, run_defaults: { ...current.run_defaults, orchestrator: { ...current.run_defaults.orchestrator, storage: { ...current.run_defaults.orchestrator.storage, ...update } } } } : current)
   }
 
+  function updateEvalModel(update: Partial<EvalModelConfig>) {
+    setSettings((current) => current ? { ...current, eval_model: { ...current.eval_model, ...update } } : current)
+  }
+
   async function save() {
     if (!settings) return
     const saved = await api.saveSettings({
       run_defaults: settings.run_defaults,
       langfuse: { ...settings.langfuse, secret_key: secret },
+      eval_model: { ...settings.eval_model, api_key: evalApiKey },
     })
     setSettings(saved)
     setSecret('')
+    setEvalApiKey('')
     setMessage('配置已保存')
   }
 
@@ -124,6 +131,18 @@ export function SettingsPage({ setPage }: { setPage: (page: string) => void }) {
             <label>Project</label>
             <input value={settings.langfuse.project} onChange={(event) => setSettings({ ...settings, langfuse: { ...settings.langfuse, project: event.target.value } })} />
             <div className="actions-inline"><button onClick={testLangfuse}>测试连接</button></div>
+          </div>
+          <div className="card form">
+            <h3>评测模型配置</h3>
+            <p className="muted">Scorer（LLM-as-Judge）使用的评测大模型。保存到 .agent-eval/eval-model.json；API Key 默认脱敏，留空不覆盖。</p>
+            <label>模型</label>
+            <input value={settings.eval_model.model} onChange={(event) => updateEvalModel({ model: event.target.value })} placeholder="gpt-4o-mini" />
+            <label>API Key</label>
+            <input type="password" value={evalApiKey} onChange={(event) => setEvalApiKey(event.target.value)} placeholder={settings.eval_model.api_key_configured ? '已配置；留空表示不修改' : '输入 API Key'} />
+            <label>Base URL（可选）</label>
+            <input value={settings.eval_model.base_url} onChange={(event) => updateEvalModel({ base_url: event.target.value })} placeholder="https://api.openai.com/v1" />
+            <label>Timeout（秒）</label>
+            <input type="number" min="1" max="300" value={settings.eval_model.timeout} onChange={(event) => updateEvalModel({ timeout: Number(event.target.value) })} />
           </div>
           <div className="card">
             <h3>Trace 配置</h3>

@@ -39,11 +39,21 @@ def create_app(output_dir: str = "./eval_results", workspace: Optional[str] = No
 
     @app.get("/api/plugins")
     def plugins():
-        return {"plugins": [{"name": name, **info} for name, info in PluginRegistry.list_plugins().items()]}
+        from agent_eval.web.metadata import get_plugin_metadata
+        items = []
+        for name, info in PluginRegistry.list_plugins().items():
+            meta = get_plugin_metadata(name)
+            items.append({"name": name, **info, **meta})
+        return {"plugins": items}
 
     @app.get("/api/scorers")
     def scorers():
-        return {"scorers": [{"type": name, "description": description} for name, description in ScorerFactory.list_scorers().items()]}
+        from agent_eval.web.metadata import get_scorer_metadata
+        items = []
+        for name, description in ScorerFactory.list_scorers().items():
+            meta = get_scorer_metadata(name)
+            items.append({"type": name, "description": description, **meta})
+        return {"scorers": items}
 
     @app.get("/api/traces")
     def traces(
