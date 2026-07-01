@@ -1,23 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { PluginInfo, ReportListItem } from '../api/types'
+import type { EvaluatorInfo, ReportListItem } from '../api/types'
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const [plugins, setPlugins] = useState<PluginInfo[]>([])
+  const [evaluators, setEvaluators] = useState<EvaluatorInfo[]>([])
   const [reports, setReports] = useState<ReportListItem[]>([])
   const [scorerCount, setScorerCount] = useState(0)
 
   useEffect(() => {
-    api.plugins().then(setPlugins).catch(console.error)
+    api.evaluators().then(setEvaluators).catch(console.error)
     api.reports().then(setReports).catch(console.error)
     api.scorers().then((items) => setScorerCount(items.length)).catch(console.error)
   }, [])
 
   const latest = reports[0]
-  const byType = plugins.reduce<Record<string, number>>((acc, plugin) => {
-    acc[plugin.type] = (acc[plugin.type] || 0) + 1
+  const byType = evaluators.reduce<Record<string, number>>((acc, evaluator) => {
+    acc[evaluator.type] = (acc[evaluator.type] || 0) + 1
     return acc
   }, {})
 
@@ -28,7 +28,7 @@ export function DashboardPage() {
           <h2>评测总览</h2>
           <p>快速发起、监控和分析你的 Agent 评测</p>
         </div>
-        <button className="primary hero-cta" onClick={() => navigate('/run')}>+ 新建评测</button>
+        <button className="primary hero-cta" onClick={() => navigate('/run')}>+ 新建实验</button>
       </div>
 
       <div className="metric-row">
@@ -41,20 +41,20 @@ export function DashboardPage() {
           <strong className="metric-value">{reports.length}</strong>
         </div>
         <div className="metric" style={{ animationDelay: '120ms' }}>
-          <span className="metric-label">可用插件</span>
-          <strong className="metric-value">{plugins.length}</strong>
+          <span className="metric-label">可用评估器</span>
+          <strong className="metric-value">{evaluators.length}</strong>
         </div>
         <div className="metric" style={{ animationDelay: '180ms' }}>
-          <span className="metric-label">Scorer</span>
+          <span className="metric-label">打分器</span>
           <strong className="metric-value">{scorerCount}</strong>
         </div>
       </div>
 
       <div className="dash-grid">
         <div className="card dash-card">
-          <h3>最近评测</h3>
+          <h3>最近实验</h3>
           {reports.length === 0 ? (
-            <p className="muted empty-hint">暂无报告，点击「新建评测」开始</p>
+            <p className="muted empty-hint">暂无报告，点击「新建实验」开始</p>
           ) : (
             reports.slice(0, 6).map((report) => (
               <div className="report-item" key={report.run_id} onClick={() => navigate(`/reports/${report.run_id}`)}>
@@ -71,7 +71,7 @@ export function DashboardPage() {
         </div>
 
         <div className="card dash-card">
-          <h3>插件分布</h3>
+          <h3>评估器分布</h3>
           {Object.entries(byType).length === 0 ? (
             <p className="muted empty-hint">加载中...</p>
           ) : (
@@ -86,7 +86,7 @@ export function DashboardPage() {
           )}
           <h3 className="quick-title">快捷入口</h3>
           <div className="quick-links">
-            <button className="quick-link" onClick={() => navigate('/library/trace')}>从 Trace 生成评测</button>
+            <button className="quick-link" onClick={() => navigate('/library/trace')}>从 Trace 创建实验</button>
             <button className="quick-link" onClick={() => navigate('/library')}>资源中心</button>
             <button className="quick-link" onClick={() => navigate('/reports')}>查看报告</button>
             <button className="quick-link" onClick={() => navigate('/settings')}>配置中心</button>

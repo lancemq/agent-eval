@@ -71,7 +71,7 @@ class BaseTracker(ABC):
         })
         for dim, score in report.summary.get("dimensions", {}).items():
             self.log_metrics({f"dim_{dim}": score})
-        for pname, pstats in report.plugin_results.items():
+        for pname, pstats in report.evaluator_results.items():
             self.log_metrics({
                 f"plugin_{pname}_score": pstats.get("score", 0),
                 f"plugin_{pname}_pass_rate": pstats.get("pass_rate", 0),

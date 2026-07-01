@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from agent_eval.config import EvaluationConfig, parse_config
-from agent_eval.orchestrator import EvaluationOrchestrator, ResultStore
-from agent_eval.plugins.base import PluginRegistry
-from agent_eval.plugins.custom_eval_plugin import validate_custom_eval_config
+from agent_eval.orchestrator import EvaluationOrchestrator, EvaluationReport, ResultStore
+from agent_eval.evaluators.base import EvaluatorRegistry
+from agent_eval.evaluators.custom_eval_plugin import validate_custom_eval_config
 from agent_eval.reporting import ReportGenerator
 from agent_eval.runner import run_evaluation_from_config
 from agent_eval.trace.schema import TraceRecord
@@ -30,14 +30,18 @@ class RunManager:
     def __init__(self, event_bus: EventBus, output_dir: str = "./eval_results"):
         self.event_bus = event_bus
         self.output_dir = output_dir
+        self.workspace = os.getcwd()
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._lock = threading.Lock()
+
+    def set_workspace(self, workspace: str) -> None:
+        self.workspace = workspace
 
     def create_run(
         self,
         config: EvaluationConfig,
         agent_spec: Optional[str],
-        plugin_names: Optional[List[str]],
+        evaluator_names: Optional[List[str]],
         output_dir: str,
     ) -> Dict[str, Any]:
         run_id = str(uuid.uuid4())
@@ -49,7 +53,7 @@ class RunManager:
             "started_at": None,
             "completed_at": None,
             "progress": {"total": 0, "pending": 0, "running": 0, "completed": 0, "failed": 0},
-            "current_plugin": None,
+            "current_evaluator": None,
             "summary": None,
             "error": None,
             "report_id": None,
@@ -61,7 +65,7 @@ class RunManager:
         self.event_bus.publish(run_id, "run_queued", {"status": "queued"})
         thread = threading.Thread(
             target=self._run_background,
-            args=(run_id, config, agent_spec, plugin_names, output_dir),
+            args=(run_id, config, agent_spec, evaluator_names, output_dir),
             daemon=True,
         )
         thread.start()
@@ -77,10 +81,10 @@ class RunManager:
         run_id: str,
         config: EvaluationConfig,
         agent_spec: Optional[str],
-        plugin_names: Optional[List[str]],
+        evaluator_names: Optional[List[str]],
         output_dir: str,
     ) -> None:
-        orchestrator = EvaluationOrchestrator(config.orchestrator)
+        orchestrator = EvaluationOrchestrator(config.orchestrator, workspace=self.workspace)
         self.event_bus.attach_orchestrator_hooks(run_id, orchestrator)
         _attach_progress_hooks(run_id, orchestrator, self._update_run)
         self._update_run(run_id, status="running", started_at=_now())
@@ -88,7 +92,7 @@ class RunManager:
             result = run_evaluation_from_config(
                 config,
                 agent_spec=agent_spec,
-                plugin_names=plugin_names,
+                evaluator_names=evaluator_names,
                 output_dir=output_dir,
                 orchestrator=orchestrator,
             )
@@ -122,6 +126,7 @@ class WebService:
         self.trace_dir = trace_dir
         self.event_bus = EventBus()
         self.runs = RunManager(self.event_bus, output_dir)
+        self.runs.set_workspace(self.workspace)
         self.langfuse_config = LangfuseConfigStore(self.workspace)
         self.langfuse_client = LangfuseClient(self.langfuse_config)
         self.settings_store = WebSettingsStore(self.workspace)
@@ -147,12 +152,12 @@ class WebService:
             for fmt in config.report.get("formats", []):
                 if fmt not in VALID_REPORT_FORMATS:
                     errors.append({"field": "report.formats", "message": f"unsupported report format: {fmt}"})
-            available_plugins = PluginRegistry.list_plugins()
-            for name, plugin_config in config.plugins.items():
-                if name not in available_plugins:
-                    errors.append({"field": f"plugins.{name}", "message": "plugin is not registered"})
+            available_evaluators = EvaluatorRegistry.list_evaluators()
+            for name, evaluator_config in config.evaluators.items():
+                if name not in available_evaluators:
+                    errors.append({"field": f"evaluators.{name}", "message": "evaluator is not registered"})
                 if name == "custom_eval":
-                    errors.extend(validate_custom_eval_config(plugin_config.config, workspace=self.workspace))
+                    errors.extend(validate_custom_eval_config(evaluator_config.config, workspace=self.workspace))
             if not config.agent.module and not config.agent.config.get("model"):
                 warnings.append({"field": "agent", "message": "no agent module or model configured; provide agent when starting a run"})
 
@@ -186,15 +191,403 @@ class WebService:
         store = self.result_store(output_dir)
         comparison = store.compare(run_ids)
         reports = [report.to_dict() for report in comparison["reports"]]
+        row_level = store.compare_row_level(run_ids) if len(run_ids) >= 2 else {}
+        statistics = self._compute_comparison_statistics(comparison["reports"]) if len(reports) >= 2 else {}
         return {
             "reports": reports,
             "comparison": comparison["comparison"],
             "overall_scores": {report["run_id"]: report["summary"].get("overall_score", 0) for report in reports},
             "pass_rates": {report["run_id"]: report["summary"].get("pass_rate", 0) for report in reports},
+            "row_level": row_level,
+            "statistics": statistics,
+        }
+
+    def _compute_comparison_statistics(self, reports: List["EvaluationReport"]) -> Dict[str, Any]:
+        """Bootstrap CI per report + paired significance vs the first report."""
+        from agent_eval.stats import bootstrap_ci, paired_bootstrap_delta
+
+        if len(reports) < 2:
+            return {}
+        labels = [r.run_id for r in reports]
+
+        # Per-report bootstrap CI on overall score (using per-task scores as samples)
+        per_report: Dict[str, Any] = {}
+        all_task_scores: Dict[str, List[float]] = {}
+        for r in reports:
+            scores: List[float] = []
+            for rows in (r.task_results or {}).values():
+                for row in rows:
+                    s = row.get("score")
+                    if isinstance(s, (int, float)):
+                        scores.append(float(s))
+            all_task_scores[r.run_id] = scores
+            low, high, point = bootstrap_ci(scores, seed=42)
+            per_report[r.run_id] = {"mean": point, "ci_low": low, "ci_high": high, "n": len(scores)}
+
+        # Paired significance: align rows by (evaluator, task_id) across reports,
+        # take baseline = reports[0], compare each subsequent report.
+        index: Dict[tuple, Dict[int, float]] = {}
+        for i, r in enumerate(reports):
+            for evaluator_name, rows in (r.task_results or {}).items():
+                for row in rows:
+                    key = (evaluator_name, row.get("task_id", ""))
+                    s = row.get("score")
+                    if isinstance(s, (int, float)):
+                        index.setdefault(key, {})[i] = float(s)
+        baseline_label = labels[0]
+        baseline_scores = [index[k][0] for k in sorted(index) if 0 in index[k]]
+
+        paired: Dict[str, Any] = {}
+        for i in range(1, len(reports)):
+            contender_scores = [index[k][i] for k in sorted(index) if 0 in index[k] and i in index[k]]
+            delta = paired_bootstrap_delta(baseline_scores, contender_scores, seed=42)
+            paired[labels[i]] = delta
+
+        return {
+            "ci": per_report,
+            "paired_vs_baseline": {"baseline": baseline_label, "results": paired},
+        }
+
+    # ------------------------------------------------------------- csv export
+    def export_report_csv(self, run_id: str, output_dir: str = None) -> str:
+        """Export a single report's task results as CSV (flat: one row per task×evaluator)."""
+        import csv
+        import io
+
+        store = self.result_store(output_dir)
+        report = store.load(run_id)
+        if report is None:
+            raise KeyError(f"report not found: {run_id}")
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["task_id", "evaluator", "score", "passed", "response", "duration_ms"])
+
+        task_results = report.task_results or {}
+        for evaluator_name, rows in task_results.items():
+            for row in rows:
+                writer.writerow([
+                    row.get("task_id", ""),
+                    evaluator_name,
+                    row.get("score", ""),
+                    row.get("passed", ""),
+                    (row.get("response") or "").replace("\n", "\\n") if isinstance(row.get("response"), str) else row.get("response", ""),
+                    row.get("duration_ms", ""),
+                ])
+        return buf.getvalue()
+
+    def export_comparison_csv(self, run_ids: List[str], output_dir: str = None) -> str:
+        """Export a row-level comparison across reports as CSV."""
+        import csv
+        import io
+
+        store = self.result_store(output_dir)
+        row_level = store.compare_row_level(run_ids) if len(run_ids) >= 2 else {}
+        if not row_level:
+            raise ValueError("comparison requires at least 2 reports")
+
+        labels = row_level.get("labels", [])
+        aligned_rows = row_level.get("aligned_rows", [])
+        added = row_level.get("added", [])
+        removed = row_level.get("removed", [])
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+
+        header = ["evaluator", "task_id", "status"]
+        for label in labels:
+            header.append(f"score_{label}")
+        for label in labels:
+            header.append(f"passed_{label}")
+        for label in labels[1:]:
+            header.append(f"delta_{label}")
+        writer.writerow(header)
+
+        def write_row(entry: Dict[str, Any]) -> None:
+            scores = entry.get("scores", {})
+            passed = entry.get("passed", {})
+            deltas = entry.get("score_deltas", {})
+            row = [entry.get("evaluator", ""), entry.get("task_id", ""), entry.get("status", "")]
+            for label in labels:
+                row.append(scores.get(label, ""))
+            for label in labels:
+                row.append(passed.get(label, ""))
+            for label in labels[1:]:
+                row.append(deltas.get(label, ""))
+            writer.writerow(row)
+
+        for entry in aligned_rows:
+            write_row(entry)
+        for entry in added:
+            write_row(entry)
+        for entry in removed:
+            write_row(entry)
+        return buf.getvalue()
+
+    def trend(self, agent_name: Optional[str] = None, limit: int = 50) -> Dict[str, Any]:
+        """Aggregate historical runs (optionally filtered by agent) into a trend series."""
+        from agent_eval.stats import bootstrap_ci
+
+        store = self.result_store()
+        items = store.list_reports()
+        if agent_name:
+            items = [it for it in items if it.get("agent_name") == agent_name]
+        items = sorted(items, key=lambda x: x.get("timestamp", ""))[:limit]
+
+        points: List[Dict[str, Any]] = []
+        dimension_acc: Dict[str, List[Dict[str, Any]]] = {}
+        for it in items:
+            report = store.load(it["run_id"])
+            if report is None:
+                continue
+            summary = report.summary or {}
+            point = {
+                "run_id": report.run_id,
+                "timestamp": report.timestamp,
+                "agent_name": report.agent_name,
+                "overall_score": summary.get("overall_score"),
+                "pass_rate": summary.get("pass_rate"),
+                "dimensions": summary.get("dimensions", {}),
+            }
+            points.append(point)
+            for dim, val in summary.get("dimensions", {}).items():
+                dimension_acc.setdefault(dim, []).append({
+                    "run_id": report.run_id,
+                    "timestamp": report.timestamp,
+                    "score": val,
+                })
+
+        # Compute CI bands for overall_score and pass_rate
+        overall_scores = [p["overall_score"] for p in points if p.get("overall_score") is not None]
+        pass_rates = [p["pass_rate"] for p in points if p.get("pass_rate") is not None]
+
+        overall_ci = None
+        if len(overall_scores) >= 2:
+            low, high, mean = bootstrap_ci(overall_scores, seed=42)
+            trend_dir = "up" if len(overall_scores) >= 2 and overall_scores[-1] > overall_scores[0] else "down" if overall_scores[-1] < overall_scores[0] else "flat"
+            overall_ci = {"mean": mean, "ci_low": low, "ci_high": high, "n": len(overall_scores), "trend": trend_dir}
+
+        pass_rate_ci = None
+        if len(pass_rates) >= 2:
+            low, high, mean = bootstrap_ci(pass_rates, seed=42)
+            pass_rate_ci = {"mean": mean, "ci_low": low, "ci_high": high, "n": len(pass_rates)}
+
+        # CI per dimension
+        dimension_ci: Dict[str, Dict[str, Any]] = {}
+        for dim, series in dimension_acc.items():
+            scores = [s["score"] for s in series if s.get("score") is not None]
+            if len(scores) >= 2:
+                low, high, mean = bootstrap_ci(scores, seed=42)
+                dimension_ci[dim] = {"mean": mean, "ci_low": low, "ci_high": high, "n": len(scores)}
+
+        agents = sorted({p["agent_name"] for p in points if p.get("agent_name")})
+        return {
+            "agent_name": agent_name,
+            "agents": agents,
+            "points": points,
+            "dimension_trends": dimension_acc,
+            "overall_ci": overall_ci,
+            "pass_rate_ci": pass_rate_ci,
+            "dimension_ci": dimension_ci,
         }
 
     def trace_store(self) -> TraceStore:
         return TraceStore(path=self.trace_dir)
+
+    # ----------------------------------------------------------- datasets
+    def dataset_store(self):
+        from agent_eval.datasets import DatasetStore
+        return DatasetStore(self.workspace)
+
+    def list_datasets(self) -> List[Dict[str, Any]]:
+        return self.dataset_store().list_datasets()
+
+    def get_dataset(self, name: str, version: Optional[str] = None) -> Dict[str, Any]:
+        record = self.dataset_store().get(name, version)
+        return {**record.to_dict(), "versions": self.dataset_store().list_versions(name)}
+
+    def create_dataset(
+        self,
+        name: str,
+        rows: List[Dict[str, Any]],
+        description: str = "",
+        source_traces: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        record = self.dataset_store().create(
+            name=name, rows=rows, description=description,
+            source_traces=source_traces, metadata=metadata,
+        )
+        return record.to_dict()
+
+    def update_dataset_rows(
+        self, name: str, rows: List[Dict[str, Any]], description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        record = self.dataset_store().update_rows(name, rows, description)
+        return record.to_dict()
+
+    def add_dataset_version(
+        self,
+        name: str,
+        rows: List[Dict[str, Any]],
+        description: Optional[str] = None,
+        source_traces: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        record = self.dataset_store().add_version(
+            name, rows, description=description, source_traces=source_traces, metadata=metadata,
+        )
+        return record.to_dict()
+
+    def delete_dataset(self, name: str) -> bool:
+        return self.dataset_store().delete(name)
+
+    def diff_dataset(self, name: str, v1: str, v2: str) -> Dict[str, Any]:
+        return self.dataset_store().diff(name, v1, v2)
+
+    def import_traces_to_dataset(
+        self,
+        name: str,
+        trace_ids: List[str],
+        description: str = "",
+        create_new: bool = True,
+        min_quality: float = 0.0,
+    ) -> Dict[str, Any]:
+        """Build dataset rows from selected traces and persist.
+
+        ``create_new=True`` creates a new dataset; otherwise appends a new
+        version to an existing one.
+        """
+        from agent_eval.trace.task_generator import TaskGenerator
+        from agent_eval.datasets import DatasetBuilder
+
+        store = self.trace_store()
+        traces: List[TraceRecord] = []
+        for tid in trace_ids:
+            trace = store.load(tid)
+            if trace is None:
+                raise KeyError(tid)
+            traces.append(trace)
+
+        # Deduplicate via DatasetBuilder helper
+        deduped = DatasetBuilder._deduplicate(traces) if traces else []
+        tasks = TaskGenerator().generate_batch(deduped)
+        rows: List[Dict[str, Any]] = []
+        for task in tasks:
+            item = task.to_dict()
+            item["expected"] = item.pop("expected_output", "")
+            rows.append(item)
+
+        ds_store = self.dataset_store()
+        source_trace_ids = [t.trace_id for t in deduped]
+        if create_new:
+            record = ds_store.create(
+                name=name, rows=rows, description=description, source_traces=source_trace_ids,
+            )
+        else:
+            record = ds_store.add_version(
+                name=name, rows=rows, description=description, source_traces=source_trace_ids,
+            )
+        return {**record.to_dict(), "imported_count": len(rows)}
+
+    # ------------------------------------------------------------- prompts
+    def prompt_store(self):
+        from agent_eval.prompts import PromptStore
+        return PromptStore(self.workspace)
+
+    def list_prompts(self) -> List[Dict[str, Any]]:
+        return self.prompt_store().list_prompts()
+
+    def get_prompt(self, name: str, version: Optional[str] = None) -> Dict[str, Any]:
+        record = self.prompt_store().get(name, version)
+        return {**record.to_dict(), "versions": self.prompt_store().list_versions(name)}
+
+    def create_prompt(
+        self,
+        name: str,
+        messages: List[Dict[str, Any]],
+        description: str = "",
+        model_config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        record = self.prompt_store().create(
+            name=name, messages=messages, description=description,
+            model_config=model_config, metadata=metadata,
+        )
+        return record.to_dict()
+
+    def update_prompt_messages(
+        self,
+        name: str,
+        messages: List[Dict[str, Any]],
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        record = self.prompt_store().update_messages(name, messages, description)
+        return record.to_dict()
+
+    def add_prompt_version(
+        self,
+        name: str,
+        messages: List[Dict[str, Any]],
+        description: Optional[str] = None,
+        model_config: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        record = self.prompt_store().add_version(
+            name, messages, description, model_config, metadata,
+        )
+        return record.to_dict()
+
+    def diff_prompt(self, name: str, v1: str, v2: str) -> Dict[str, Any]:
+        return self.prompt_store().diff(name, v1, v2)
+
+    def delete_prompt(self, name: str) -> bool:
+        return self.prompt_store().delete(name)
+
+    # ------------------------------------------------------------- reviews
+    def review_store(self):
+        from agent_eval.reviews import ReviewStore
+        return ReviewStore(self.workspace)
+
+    def list_reviews(self) -> List[Dict[str, Any]]:
+        return self.review_store().list_sessions()
+
+    def get_review(self, name: str, version: Optional[str] = None) -> Dict[str, Any]:
+        session = self.review_store().get(name, version)
+        result = session.to_dict()
+        result["versions"] = self.review_store().list_versions(name)
+        return result
+
+    def create_review(
+        self,
+        name: str,
+        items: List[Dict[str, Any]],
+        description: str = "",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        session = self.review_store().create(
+            name=name, items=items, description=description, metadata=metadata,
+        )
+        return session.to_dict()
+
+    def add_review_items(self, name: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        session = self.review_store().add_items(name, items)
+        return session.to_dict()
+
+    def update_review_item(
+        self,
+        name: str,
+        item_id: str,
+        status: Optional[str] = None,
+        notes: Optional[str] = None,
+        labels: Optional[List[str]] = None,
+        reviewer: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        session = self.review_store().update_item(name, item_id, status, notes, labels, reviewer)
+        return session.to_dict()
+
+    def delete_review(self, name: str) -> bool:
+        return self.review_store().delete(name)
 
     def list_traces(self, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
         records = self.trace_store().query({key: value for key, value in filters.items() if value is not None})
@@ -203,6 +596,135 @@ class WebService:
     def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
         record = self.trace_store().load(trace_id)
         return record.to_dict() if record else None
+
+    def score_traces(
+        self,
+        trace_ids: List[str],
+        scorers: List[str],
+    ) -> Dict[str, Any]:
+        """Run scorers on selected traces and return results."""
+        import time as _time
+
+        from agent_eval.scorers.factory import ScorerFactory
+
+        store = self.trace_store()
+        results: List[Dict[str, Any]] = []
+        all_scores: List[float] = []
+
+        for tid in trace_ids:
+            trace = store.load(tid)
+            if trace is None:
+                results.append({"trace_id": tid, "error": "trace not found", "scores": []})
+                continue
+            output = trace.output or ""
+            input_text = trace.input or ""
+            expected = trace.metadata.get("expected") or trace.metadata.get("expected_output") or ""
+            score_list: List[Dict[str, Any]] = []
+            for scorer_name in scorers:
+                try:
+                    scorer = ScorerFactory.create({"type": scorer_name})
+                    t0 = _time.monotonic()
+                    result = scorer.score(output, input=input_text, expected=expected)
+                    elapsed = int((_time.monotonic() - t0) * 1000)
+                    score_list.append({
+                        **result.to_dict(),
+                        "execution_time_ms": elapsed,
+                    })
+                    if isinstance(result.score, (int, float)):
+                        all_scores.append(float(result.score))
+                except Exception as exc:
+                    score_list.append({
+                        "name": scorer_name,
+                        "score": 0.0,
+                        "reason": f"scorer error: {exc}",
+                        "passed": False,
+                        "execution_time_ms": 0,
+                    })
+            results.append({
+                "trace_id": tid,
+                "output": output[:500],
+                "scores": score_list,
+            })
+
+        summary = {
+            "mean_score": sum(all_scores) / len(all_scores) if all_scores else 0.0,
+            "pass_rate": sum(1 for s in all_scores if s >= 0.7) / len(all_scores) if all_scores else 0.0,
+            "total": len(all_scores),
+        }
+        return {"results": results, "summary": summary}
+
+    def run_playground(
+        self,
+        messages: List[Dict[str, Any]],
+        model: str,
+        input_text: str,
+        scorers: List[str],
+        expected: str = "",
+    ) -> Dict[str, Any]:
+        """Run a single playground debug: prompt + model + scorers → output + scores."""
+        import time as _time
+
+        from agent_eval.orchestrator.agent import OpenAIAgent
+        from agent_eval.scorers.factory import ScorerFactory
+
+        # Resolve model config (api_key, base_url)
+        api_key = None
+        base_url = None
+        try:
+            cfg = EvalModelConfigStore(self.workspace).load_for_scorer()
+            api_key = cfg.get("api_key") or None
+            base_url = cfg.get("base_url") or None
+            if not model:
+                model = cfg.get("model") or "gpt-4o-mini"
+        except Exception:
+            model = model or "gpt-4o-mini"
+
+        # Extract system prompt from messages
+        system_prompt = ""
+        for msg in messages:
+            if msg.get("role") == "system":
+                system_prompt = msg.get("content", "")
+                break
+
+        agent = OpenAIAgent(
+            model=model,
+            system_prompt=system_prompt,
+            temperature=0.0,
+            api_key=api_key,
+            base_url=base_url,
+        )
+
+        t0 = _time.monotonic()
+        try:
+            output = agent.generate(input_text)
+        except Exception as exc:
+            return {
+                "output": "",
+                "error": str(exc),
+                "scores": [],
+                "latency_ms": int((_time.monotonic() - t0) * 1000),
+            }
+        latency_ms = int((_time.monotonic() - t0) * 1000)
+
+        score_list: List[Dict[str, Any]] = []
+        for scorer_name in scorers:
+            try:
+                scorer = ScorerFactory.create({"type": scorer_name})
+                result = scorer.score(output, input=input_text, expected=expected)
+                score_list.append(result.to_dict())
+            except Exception as exc:
+                score_list.append({
+                    "name": scorer_name,
+                    "score": 0.0,
+                    "reason": f"scorer error: {exc}",
+                    "passed": False,
+                })
+
+        return {
+            "output": output,
+            "scores": score_list,
+            "latency_ms": latency_ms,
+        }
 
     def build_trace_eval_config(
         self,
@@ -361,13 +883,13 @@ class WebService:
 
 
 def _attach_progress_hooks(run_id: str, orchestrator: EvaluationOrchestrator, update_run) -> None:
-    def on_task_generated(plugin, tasks):
+    def on_task_generated(evaluator, tasks):
         current = orchestrator.task_queue.progress()
-        update_run(run_id, current_plugin=plugin.name, progress=current)
+        update_run(run_id, current_evaluator=evaluator.name, progress=current)
 
-    def on_task_execute(plugin, task):
+    def on_task_execute(evaluator, task):
         current = orchestrator.task_queue.progress()
-        update_run(run_id, current_plugin=plugin.name, progress=current)
+        update_run(run_id, current_evaluator=evaluator.name, progress=current)
 
     def on_task_complete(task_id, result):
         state = update_run

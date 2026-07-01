@@ -8,11 +8,11 @@ Usage:
     from agent_eval.distributed import RedisTaskQueue, EvaluationWorker
 
     queue = RedisTaskQueue(redis_url="redis://localhost:6379")
-    worker = EvaluationWorker(queue, plugins=["mmlu", "gsm8k"])
+    worker = EvaluationWorker(queue, evaluators=["mmlu", "gsm8k"])
     worker.start()  # Polls for tasks
 
     # Submitter
-    queue.submit_tasks(tasks, plugin_name="mmlu", priority="high")
+    queue.submit_tasks(tasks, evaluator_name="mmlu", priority="high")
     results = queue.collect_results(run_id, timeout=300)
 """
 
@@ -62,7 +62,7 @@ class RedisTaskQueue:
     def submit_tasks(
         self,
         tasks: List[Dict[str, Any]],
-        plugin_name: str = "",
+        evaluator_name: str = "",
         priority: str = "normal",
         run_id: str = "",
     ) -> List[str]:
@@ -80,14 +80,14 @@ class RedisTaskQueue:
         pipe = r.pipeline()
         for task_data in tasks:
             task_id = task_data.get("task_id", str(uuid.uuid4()))
-            task_data["_plugin"] = plugin_name
+            task_data["_plugin"] = evaluator_name
             task_data["_run_id"] = run_id
             task_data["_status"] = "pending"
             pipe.zadd(self.queue_name, {json.dumps({"task_id": task_id, "data": task_data}): score})
             pipe.hset(f"agent_eval:task:{task_id}", mapping=task_data)
             task_ids.append(task_id)
         pipe.execute()
-        logger.info(f"Submitted {len(task_ids)} tasks for plugin '{plugin_name}'")
+        logger.info(f"Submitted {len(task_ids)} tasks for evaluator '{evaluator_name}'")
         return task_ids
 
     def claim_task(self, worker_id: str, timeout: float = 5.0) -> Optional[Dict[str, Any]]:
@@ -175,7 +175,7 @@ class RedisTaskQueue:
 class WorkerConfig:
     """Configuration for an evaluation worker."""
     worker_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    plugins: List[str] = field(default_factory=list)
+    evaluators: List[str] = field(default_factory=list)
     max_tasks: int = 0  # 0 = unlimited
     poll_interval: float = 1.0
     heartbeat_interval: float = 30.0
@@ -186,13 +186,13 @@ class EvaluationWorker:
 
     Each worker:
     1. Claims tasks from the Redis queue
-    2. Executes them using the plugin system
+    2. Executes them using the evaluator system
     3. Publishes results back
 
     Usage:
         worker = EvaluationWorker(
             RedisTaskQueue(redis_url="redis://localhost:6379"),
-            WorkerConfig(plugins=["mmlu", "gsm8k"]),
+            WorkerConfig(evaluators=["mmlu", "gsm8k"]),
         )
         worker.start()  # Blocking - runs until queue empty or max_tasks reached
     """
@@ -210,21 +210,21 @@ class EvaluationWorker:
 
     def start(self) -> None:
         """Start the worker loop. Blocks until queue empty or max_tasks reached."""
-        from agent_eval.plugins.base import BasePlugin, EvalContext, PluginRegistry
+        from agent_eval.evaluators.base import BaseEvaluator, EvalContext, EvaluatorRegistry
 
         self._running = True
-        self.logger.info(f"Worker {self.config.worker_id} started, plugins: {self.config.plugins}")
+        self.logger.info(f"Worker {self.config.worker_id} started, evaluators: {self.config.evaluators}")
 
-        # Initialize plugins
-        plugin_instances: Dict[str, BasePlugin] = {}
-        for pname in self.config.plugins:
+        # Initialize evaluators
+        plugin_instances: Dict[str, BaseEvaluator] = {}
+        for pname in self.config.evaluators:
             try:
-                plugin = PluginRegistry.get(pname)
-                plugin.setup({})
-                plugin_instances[pname] = plugin
-                self.logger.info(f"Loaded plugin: {pname}")
+                evaluator = EvaluatorRegistry.get(pname)
+                evaluator.setup({})
+                plugin_instances[pname] = evaluator
+                self.logger.info(f"Loaded evaluator: {pname}")
             except Exception as e:
-                self.logger.error(f"Failed to load plugin '{pname}': {e}")
+                self.logger.error(f"Failed to load evaluator '{pname}': {e}")
 
         context = EvalContext(
             agent_under_test=None,
@@ -250,20 +250,20 @@ class EvaluationWorker:
                 continue
 
             task_id = task_data.get("task_id", str(uuid.uuid4()))
-            plugin_name = task_data.get("_plugin", "")
+            evaluator_name = task_data.get("_plugin", "")
 
-            plugin = plugin_instances.get(plugin_name)
-            if plugin is None:
-                self.queue.fail_task(task_id, f"Unknown plugin: {plugin_name}")
+            evaluator = plugin_instances.get(evaluator_name)
+            if evaluator is None:
+                self.queue.fail_task(task_id, f"Unknown evaluator: {evaluator_name}")
                 continue
 
             try:
-                output = plugin.execute_task(task_data, context)
-                result = plugin.evaluate(task_data, output, context)
+                output = evaluator.execute_task(task_data, context)
+                result = evaluator.evaluate(task_data, output, context)
                 self.queue.complete_task(task_id, {
                     "score": result.score,
                     "passed": result.passed,
-                    "plugin": result.plugin_name,
+                    "evaluator": result.evaluator_name,
                     "details": result.details,
                 })
                 self._tasks_done += 1

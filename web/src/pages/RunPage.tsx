@@ -4,7 +4,7 @@ export function RunPage() {
   return (
     <section>
       <div className="page-header">
-        <h2>新建评测</h2>
+        <h2>新建实验</h2>
       </div>
       <RunWizard />
     </section>

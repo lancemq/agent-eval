@@ -3,20 +3,20 @@
 from typing import Any, Dict, Type, Union
 from agent_eval.judges.base import BaseJudge, JudgeResult, LLMJudgeConfig
 from agent_eval.judges.llm_judge import LLMJudge, EnsembleJudge
-from agent_eval.plugins.benchmark.humaneval_plugin import CodeExecutionJudge
-from agent_eval.plugins.benchmark.gsm8k_plugin import NumericAnswerJudge
-from agent_eval.plugins.dynamic.tool_use_plugin import (
+from agent_eval.evaluators.benchmark.humaneval_plugin import CodeExecutionJudge
+from agent_eval.evaluators.benchmark.gsm8k_plugin import NumericAnswerJudge
+from agent_eval.evaluators.dynamic.tool_use_plugin import (
     ToolCorrectnessJudge, EfficiencyJudge, RobustnessJudge,
 )
-from agent_eval.plugins.dynamic.multi_turn_plugin import (
+from agent_eval.evaluators.dynamic.multi_turn_plugin import (
     ConversationQualityJudge, ContextRetentionJudge, ConsistencyJudge,
 )
-from agent_eval.plugins.dynamic.coding_plugin import (
+from agent_eval.evaluators.dynamic.coding_plugin import (
     CodeCorrectnessJudge, CodeStyleJudge, CodeEfficiencyJudge,
 )
-from agent_eval.plugins.adversarial.jailbreak_plugin import SafetyClassifier, RefusalDetector
-from agent_eval.plugins.adversarial.injection_plugin import InjectionDetectionJudge
-from agent_eval.plugins.adversarial.bias_plugin import BiasDetectionJudge
+from agent_eval.evaluators.adversarial.jailbreak_plugin import SafetyClassifier, RefusalDetector
+from agent_eval.evaluators.adversarial.injection_plugin import InjectionDetectionJudge
+from agent_eval.evaluators.adversarial.bias_plugin import BiasDetectionJudge
 
 
 class ScorerBridge(BaseJudge):

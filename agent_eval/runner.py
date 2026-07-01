@@ -31,22 +31,22 @@ def agent_spec_from_config(config: EvaluationConfig, override_agent: Optional[st
     raise ValueError("Agent spec is required. Provide --agent, agent.module, or agent.config.model")
 
 
-def resolve_plugin_names(config: EvaluationConfig, override_plugins: Optional[List[str]] = None) -> List[str]:
-    if override_plugins:
-        return override_plugins
-    return [name for name, plugin_config in config.plugins.items() if plugin_config.enabled]
+def resolve_evaluator_names(config: EvaluationConfig, override_evaluators: Optional[List[str]] = None) -> List[str]:
+    if override_evaluators:
+        return override_evaluators
+    return [name for name, evaluator_config in config.evaluators.items() if evaluator_config.enabled]
 
 
 def run_evaluation_from_config(
     config: EvaluationConfig,
     agent_spec: Optional[str] = None,
-    plugin_names: Optional[List[str]] = None,
+    evaluator_names: Optional[List[str]] = None,
     output_dir: Optional[str] = None,
     orchestrator: Optional[EvaluationOrchestrator] = None,
 ) -> EvaluationRunResult:
-    import_plugin_modules(config.plugin_modules)
+    import_evaluator_modules(config.evaluator_modules)
     selected_agent = agent_spec_from_config(config, agent_spec)
-    selected_plugins = resolve_plugin_names(config, plugin_names)
+    selected_evaluators = resolve_evaluator_names(config, evaluator_names)
 
     if output_dir:
         config.orchestrator.storage["output_dir"] = output_dir
@@ -54,8 +54,8 @@ def run_evaluation_from_config(
 
     agent = create_agent(selected_agent, config.agent.config)
     orchestrator = orchestrator or EvaluationOrchestrator(config.orchestrator)
-    plugin_configs = {name: plugin_config.config for name, plugin_config in config.plugins.items()}
-    report = orchestrator.run_evaluation(agent, selected_plugins, config.eval_config, plugin_configs)
+    evaluator_configs = {name: evaluator_config.config for name, evaluator_config in config.evaluators.items()}
+    report = orchestrator.run_evaluation(agent, selected_evaluators, config.eval_config, evaluator_configs)
 
     report_output_dir = output_dir or config.report.get("output_dir", "./eval_results")
     generator = ReportGenerator(report_output_dir)
@@ -63,8 +63,8 @@ def run_evaluation_from_config(
     return EvaluationRunResult(report, generated)
 
 
-def import_plugin_modules(plugin_modules: List[str]) -> None:
-    for module in plugin_modules:
+def import_evaluator_modules(evaluator_modules: List[str]) -> None:
+    for module in evaluator_modules:
         importlib.import_module(module)
 
 

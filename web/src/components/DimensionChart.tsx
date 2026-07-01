@@ -2,7 +2,7 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 
 export function DimensionChart({ dimensions }: { dimensions?: Record<string, number> }) {
   const data = Object.entries(dimensions || {}).map(([name, score]) => ({ name, score }))
-  if (!data.length) return <p className="muted">暂无维度分数</p>
+  if (!data.length) return <p className="muted">暂无指标分数</p>
   return (
     <div className="chart">
       <ResponsiveContainer width="100%" height={260}>

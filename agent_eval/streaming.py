@@ -75,7 +75,7 @@ class StreamCallback:
         if result is not None:
             event.data["last_score"] = result.score
             event.data["last_passed"] = result.passed
-            event.data["last_plugin"] = result.plugin_name
+            event.data["last_plugin"] = result.evaluator_name
             if result.error:
                 event.data["error"] = result.error
         self._push(event)

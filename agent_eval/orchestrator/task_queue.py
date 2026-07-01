@@ -28,7 +28,7 @@ class Task:
     """A single evaluation task."""
     task_id: str
     data: Dict[str, Any]
-    plugin_name: str
+    evaluator_name: str
     priority: TaskPriority = TaskPriority.NORMAL
     status: TaskStatus = TaskStatus.PENDING
     created_at: float = field(default_factory=time.time)
@@ -54,7 +54,7 @@ class TaskQueue:
         self._tasks: Dict[str, Task] = {}
         self._callbacks: Dict[str, List[Callable]] = {}
 
-    def enqueue(self, task_data: Dict[str, Any], plugin_name: str = "", priority: TaskPriority = TaskPriority.NORMAL) -> str:
+    def enqueue(self, task_data: Dict[str, Any], evaluator_name: str = "", priority: TaskPriority = TaskPriority.NORMAL) -> str:
         task_id = task_data.get("task_id", str(uuid.uuid4()))
         if task_id in self._tasks:
             raise ValueError(f"Task {task_id} already exists")
@@ -62,7 +62,7 @@ class TaskQueue:
         task = Task(
             task_id=task_id,
             data=task_data,
-            plugin_name=plugin_name,
+            evaluator_name=evaluator_name,
             priority=priority,
         )
         self._tasks[task_id] = task
@@ -80,8 +80,8 @@ class TaskQueue:
         p = priority_map.get(priority, TaskPriority.NORMAL)
         task_ids = []
         for task in tasks:
-            plugin_name = task.get("_plugin", "")
-            task_id = self.enqueue(task, plugin_name=plugin_name, priority=p)
+            evaluator_name = task.get("_plugin", "")
+            task_id = self.enqueue(task, evaluator_name=evaluator_name, priority=p)
             task_ids.append(task_id)
         return task_ids
 

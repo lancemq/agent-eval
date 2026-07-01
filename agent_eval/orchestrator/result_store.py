@@ -53,6 +53,79 @@ class ResultStore:
             result[dim] = dict(zip(names, scores))
         return result
 
+    def compare_row_level(self, report_ids: List[str]) -> Dict[str, Any]:
+        """Row-level comparison across reports.
+
+        Aligns tasks by ``(evaluator_name, task_id)``. Returns aligned rows,
+        per-report-only tasks (added/removed), and score deltas.
+        """
+        reports = []
+        for rid in report_ids:
+            r = self.load(rid)
+            if r is None:
+                raise KeyError(f"report not found: {rid}")
+            reports.append(r)
+        if len(reports) < 2:
+            return {}
+
+        labels = [r.run_id for r in reports]
+
+        # Build { (evaluator, task_id): {report_idx: row} } for every report
+        index: Dict[tuple, Dict[int, Dict[str, Any]]] = {}
+        per_report_keys: List[set] = []
+        for i, r in enumerate(reports):
+            keys = set()
+            for evaluator_name, rows in (r.task_results or {}).items():
+                for row in rows:
+                    tid = row.get("task_id", "")
+                    key = (evaluator_name, tid)
+                    index.setdefault(key, {})[i] = row
+                    keys.add(key)
+            per_report_keys.append(keys)
+
+        all_keys = set().union(*per_report_keys)
+
+        aligned_rows: List[Dict[str, Any]] = []
+        added: List[Dict[str, Any]] = []   # absent in baseline, present in others
+        removed: List[Dict[str, Any]] = []  # present in baseline, absent in others
+        for key in sorted(all_keys, key=lambda k: (k[0], str(k[1]))):
+            row_map = index.get(key, {})
+            entry = {
+                "evaluator": key[0],
+                "task_id": key[1],
+                "scores": {labels[i]: row_map[i].get("score") for i in range(len(reports)) if i in row_map},
+                "passed": {labels[i]: row_map[i].get("passed") for i in range(len(reports)) if i in row_map},
+                "responses": {labels[i]: row_map[i].get("response") for i in range(len(reports)) if i in row_map},
+            }
+            if 0 not in row_map and any(i in row_map for i in range(1, len(reports))):
+                entry["status"] = "added"
+                added.append(entry)
+            elif 0 in row_map and not all(i in row_map for i in range(1, len(reports))):
+                entry["status"] = "removed"
+                removed.append(entry)
+            else:
+                entry["status"] = "aligned"
+                # compute deltas vs baseline (report 0)
+                base_score = row_map[0].get("score") if 0 in row_map else None
+                entry["score_deltas"] = {}
+                if base_score is not None:
+                    for i in range(1, len(reports)):
+                        if i in row_map:
+                            entry["score_deltas"][labels[i]] = (row_map[i].get("score") or 0) - (base_score or 0)
+                aligned_rows.append(entry)
+
+        return {
+            "labels": labels,
+            "aligned_rows": aligned_rows,
+            "added": added,
+            "removed": removed,
+            "summary": {
+                "aligned": len(aligned_rows),
+                "added": len(added),
+                "removed": len(removed),
+            },
+        }
+
 
 class JSONBackend:
     """JSON file-based storage."""
@@ -210,7 +283,7 @@ class EvaluationReport:
         agent_name: str,
         agent_version: str,
         summary: Dict[str, Any],
-        plugin_results: Dict[str, Any],
+        evaluator_results: Dict[str, Any],
         metadata: Dict[str, Any],
         artifacts: List[Any] = None,
         task_results: Dict[str, List[Dict[str, Any]]] = None,
@@ -220,7 +293,7 @@ class EvaluationReport:
         self.agent_name = agent_name
         self.agent_version = agent_version
         self.summary = summary
-        self.plugin_results = plugin_results
+        self.evaluator_results = evaluator_results
         self.metadata = metadata
         self.artifacts = artifacts or []
         self.task_results = task_results or {}
@@ -231,7 +304,7 @@ class EvaluationReport:
             "timestamp": self.timestamp,
             "agent": {"name": self.agent_name, "version": self.agent_version},
             "summary": self.summary,
-            "plugin_results": self.plugin_results,
+            "evaluator_results": self.evaluator_results,
             "task_results": self.task_results,
             "metadata": self.metadata,
             "artifacts_count": len(self.artifacts),
@@ -246,7 +319,7 @@ class EvaluationReport:
             agent_name=agent.get("name", "unknown"),
             agent_version=agent.get("version", "1.0"),
             summary=data["summary"],
-            plugin_results=data["plugin_results"],
+            evaluator_results=data["evaluator_results"],
             metadata=data.get("metadata", {}),
             task_results=data.get("task_results", {}),
         )

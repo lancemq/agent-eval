@@ -18,8 +18,8 @@ class OrchestratorConfig:
 
 
 @dataclass
-class PluginConfig:
-    """Configuration for a single plugin."""
+class EvaluatorConfig:
+    """Configuration for a single evaluator."""
     enabled: bool = True
     config: Dict[str, Any] = field(default_factory=dict)
 
@@ -37,8 +37,8 @@ class EvaluationConfig:
     """Top-level evaluation configuration."""
     orchestrator: OrchestratorConfig = field(default_factory=OrchestratorConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
-    plugins: Dict[str, PluginConfig] = field(default_factory=dict)
-    plugin_modules: list[str] = field(default_factory=list)
+    evaluators: Dict[str, EvaluatorConfig] = field(default_factory=dict)
+    evaluator_modules: list[str] = field(default_factory=list)
     eval_config: Dict[str, Any] = field(default_factory=dict)
     report: Dict[str, Any] = field(default_factory=lambda: {"formats": ["json", "html"], "output_dir": "./eval_results"})
     config_dir: str = ""
@@ -100,15 +100,15 @@ def parse_config(raw: Dict[str, Any], base_dir: str = "") -> EvaluationConfig:
         config=agent_raw.get("config", {}),
     )
 
-    plugins = {}
-    for name, cfg in raw.get("plugins", {}).items():
+    evaluators = {}
+    for name, cfg in raw.get("evaluators", {}).items():
         if isinstance(cfg, dict):
-            plugins[name] = PluginConfig(
+            evaluators[name] = EvaluatorConfig(
                 enabled=cfg.get("enabled", True),
                 config={k: v for k, v in cfg.items() if k != "enabled"},
             )
         else:
-            plugins[name] = PluginConfig(enabled=bool(cfg))
+            evaluators[name] = EvaluatorConfig(enabled=bool(cfg))
 
     report_raw = raw.get("report", {})
     report = {
@@ -119,8 +119,8 @@ def parse_config(raw: Dict[str, Any], base_dir: str = "") -> EvaluationConfig:
     return EvaluationConfig(
         orchestrator=orch,
         agent=agent,
-        plugins=plugins,
-        plugin_modules=raw.get("plugin_modules", []),
+        evaluators=evaluators,
+        evaluator_modules=raw.get("evaluator_modules", []),
         eval_config=raw.get("eval_config", {}),
         report=report,
         config_dir=base_dir,

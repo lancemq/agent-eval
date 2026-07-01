@@ -10,8 +10,8 @@ class HookManager:
         self._hooks: Dict[str, List[Callable]] = {
             "evaluation_start": [],
             "evaluation_complete": [],
-            "plugin_setup": [],
-            "plugin_teardown": [],
+            "evaluator_setup": [],
+            "evaluator_teardown": [],
             "task_generated": [],
             "task_execute": [],
             "task_complete": [],

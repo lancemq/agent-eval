@@ -7,10 +7,15 @@ type Props = {
 
 const mainNav: Array<[string, string]> = [
   ['/', '总览'],
-  ['/run', '新建评测'],
-  ['/live', '运行监测'],
-  ['/library', '资源库'],
+  ['/run', '新建实验'],
+  ['/live', '实验监测'],
+  ['/datasets', '数据集'],
+  ['/prompts', 'Prompt'],
   ['/reports', '报告'],
+  ['/reviews', '人工评审'],
+  ['/playground', 'Playground'],
+  ['/trend', '趋势'],
+  ['/library', '资源库'],
 ]
 
 const bottomNav: Array<[string, string]> = [

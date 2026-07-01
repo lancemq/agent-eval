@@ -1,4 +1,4 @@
-"""Rich metadata for scorers and plugins — used by Web UI library page."""
+"""Rich metadata for scorers and evaluators — used by Web UI library page."""
 
 from __future__ import annotations
 
@@ -500,16 +500,16 @@ SCORER_METADATA: Dict[str, Dict[str, Any]] = {
 }
 
 
-# -------- Plugins --------
+# -------- Evaluators --------
 
-PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
+EVALUATOR_METADATA: Dict[str, Dict[str, Any]] = {
     "gsm8k": {
         "params": [
             {"name": "split", "type": "str", "default": "test", "description": "数据集划分（train / test）"},
             {"name": "judge", "type": "Dict", "default": {"type": "numeric_answer"}, "description": "判分方式"},
         ],
         "use_cases": ["数学推理基准（小学算术）", "多步推理验证"],
-        "example": {"plugins": {"gsm8k": {"config": {"split": "test", "judge": {"type": "numeric_answer"}}}}},
+        "example": {"evaluators": {"gsm8k": {"config": {"split": "test", "judge": {"type": "numeric_answer"}}}}},
     },
     "humaneval": {
         "params": [
@@ -517,7 +517,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judge", "type": "Dict", "default": {"type": "code_execution"}, "description": "判分方式（默认执行测试）"},
         ],
         "use_cases": ["Python 代码生成评估", "pass@1 准确度"],
-        "example": {"plugins": {"humaneval": {"config": {"timeout": 30}}}},
+        "example": {"evaluators": {"humaneval": {"config": {"timeout": 30}}}},
     },
     "mmlu": {
         "params": [
@@ -526,7 +526,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judge", "type": "Dict", "default": {"type": "exact_match"}, "description": "判分方式"},
         ],
         "use_cases": ["广义知识与推理（57 学科多选题）"],
-        "example": {"plugins": {"mmlu": {"config": {"subset": "stem"}}}},
+        "example": {"evaluators": {"mmlu": {"config": {"subset": "stem"}}}},
     },
     "coding": {
         "params": [
@@ -535,7 +535,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judges", "type": "List[Dict]", "default": [], "description": "判分链"},
         ],
         "use_cases": ["代码生成/调试/重构动态评估"],
-        "example": {"plugins": {"coding": {"config": {"task_file": "scenarios/coding.yaml"}}}},
+        "example": {"evaluators": {"coding": {"config": {"task_file": "scenarios/coding.yaml"}}}},
     },
     "multi_turn": {
         "params": [
@@ -544,7 +544,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judges", "type": "List[Dict]", "default": [], "description": "判分链"},
         ],
         "use_cases": ["多轮对话评测", "上下文保持验证"],
-        "example": {"plugins": {"multi_turn": {"config": {"max_turns": 8}}}},
+        "example": {"evaluators": {"multi_turn": {"config": {"max_turns": 8}}}},
     },
     "tool_use": {
         "params": [
@@ -555,7 +555,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judges", "type": "List[Dict]", "default": [], "description": "判分链"},
         ],
         "use_cases": ["Agent 工具调用评估", "规划与错误恢复"],
-        "example": {"plugins": {"tool_use": {"config": {"sandbox": "local", "max_turns": 6}}}},
+        "example": {"evaluators": {"tool_use": {"config": {"sandbox": "local", "max_turns": 6}}}},
     },
     "bias": {
         "params": [
@@ -563,7 +563,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judge", "type": "Dict", "default": {"type": "bias_detection"}, "description": "判分方式"},
         ],
         "use_cases": ["人口学/刻板印象/公平性对抗"],
-        "example": {"plugins": {"bias": {"config": {"bias_file": "attacks/bias.yaml"}}}},
+        "example": {"evaluators": {"bias": {"config": {"bias_file": "attacks/bias.yaml"}}}},
     },
     "injection": {
         "params": [
@@ -571,7 +571,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "judge", "type": "Dict", "default": {"type": "injection_detection"}, "description": "判分方式"},
         ],
         "use_cases": ["Prompt 注入安全测试"],
-        "example": {"plugins": {"injection": {"config": {"injection_file": "attacks/injection.yaml"}}}},
+        "example": {"evaluators": {"injection": {"config": {"injection_file": "attacks/injection.yaml"}}}},
     },
     "jailbreak": {
         "params": [
@@ -580,7 +580,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
             {"name": "refusal_judge", "type": "Dict", "default": {"type": "refusal_detection"}, "description": "拒答判分器"},
         ],
         "use_cases": ["越狱/对抗稳健性", "拒答行为评估"],
-        "example": {"plugins": {"jailbreak": {"config": {"attack_config": "attacks/comprehensive.yaml"}}}},
+        "example": {"evaluators": {"jailbreak": {"config": {"attack_config": "attacks/comprehensive.yaml"}}}},
     },
     "custom_eval": {
         "params": [
@@ -588,7 +588,7 @@ PLUGIN_METADATA: Dict[str, Dict[str, Any]] = {
         ],
         "use_cases": ["自定义数据集/Rubric 评测", "Trace-to-Eval 输出"],
         "example": {
-            "plugins": {
+            "evaluators": {
                 "custom_eval": {
                     "config": {
                         "evaluations": [
@@ -616,13 +616,13 @@ def get_scorer_metadata(scorer_type: str) -> Dict[str, Any]:
     return SCORER_METADATA.get(scorer_type, {"params": [], "requires": [], "dimensions": [], "use_cases": [], "example": {"type": scorer_type}})
 
 
-def get_plugin_metadata(plugin_name: str) -> Dict[str, Any]:
-    return PLUGIN_METADATA.get(plugin_name, {"params": [], "use_cases": [], "example": {}})
+def get_evaluator_metadata(evaluator_name: str) -> Dict[str, Any]:
+    return EVALUATOR_METADATA.get(evaluator_name, {"params": [], "use_cases": [], "example": {}})
 
 
 def list_scorer_metadata() -> List[str]:
     return list(SCORER_METADATA.keys())
 
 
-def list_plugin_metadata() -> List[str]:
-    return list(PLUGIN_METADATA.keys())
+def list_evaluator_metadata() -> List[str]:
+    return list(EVALUATOR_METADATA.keys())

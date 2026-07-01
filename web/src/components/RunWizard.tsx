@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { VirtualList } from './VirtualList'
 import { CustomEvalBuilder } from './CustomEvalBuilder'
-import { PluginSelector } from './PluginSelector'
+import { EvaluatorSelector } from './EvaluatorSelector'
 import { useAppStore } from '../stores/appStore'
 import type {
   LangfuseConfig,
   LangfuseSession,
   LangfuseTrace,
-  PluginInfo,
+  EvaluatorInfo,
   RunDefaults,
   ScorerInfo,
   TraceSummary,
@@ -62,7 +62,7 @@ function buildDefaultConfig(defaults: RunDefaults) {
   return {
     orchestrator: defaults.orchestrator,
     agent: { type: 'callable', module: '', config: { model: 'gpt-4o-mini', temperature: 0 } },
-    plugins: {},
+    evaluators: {},
     eval_config: { priority: 'normal' },
     report: { formats: defaults.report_formats, output_dir: defaults.output_dir },
   }
@@ -103,8 +103,8 @@ export function RunWizard() {
   const toggleScorer = useAppStore((s) => s.toggleScorer)
 
   // Manual config state
-  const [plugins, setPlugins] = useState<PluginInfo[]>([])
-  const [selectedPlugins, setSelectedPlugins] = useState<string[]>([])
+  const [evaluators, setEvaluators] = useState<EvaluatorInfo[]>([])
+  const [selectedEvaluators, setSelectedEvaluators] = useState<string[]>([])
   const [runDefaults, setRunDefaults] = useState<RunDefaults>(fallbackRunDefaults)
   const [configText, setConfigText] = useState(JSON.stringify(buildDefaultConfig(fallbackRunDefaults), null, 2))
 
@@ -130,9 +130,9 @@ export function RunWizard() {
       setScorers(items)
       if (selectedScorers.length === 0) setSelectedScorers(items.slice(0, 1).map((i) => i.type))
     }).catch(console.error)
-    api.plugins().then((items) => {
-      setPlugins(items)
-      setSelectedPlugins(items.slice(0, 1).map((p) => p.name))
+    api.evaluators().then((items) => {
+      setEvaluators(items)
+      setSelectedEvaluators(items.slice(0, 1).map((p) => p.name))
     }).catch(console.error)
     api.settings().then((s) => {
       setRunDefaults(s.run_defaults)
@@ -147,8 +147,8 @@ export function RunWizard() {
   useEffect(() => {
     if (!draftEvalConfig) return
     setSource('manual')
-    setConfigText(JSON.stringify({ ...buildDefaultConfig(runDefaults), plugins: { custom_eval: draftEvalConfig } }, null, 2))
-    setSelectedPlugins((items) => items.includes('custom_eval') ? items : [...items, 'custom_eval'])
+    setConfigText(JSON.stringify({ ...buildDefaultConfig(runDefaults), evaluators: { custom_eval: draftEvalConfig } }, null, 2))
+    setSelectedEvaluators((items) => items.includes('custom_eval') ? items : [...items, 'custom_eval'])
     setPreviewConfig(draftEvalConfig)
     setStep('preview')
     setMessage('已载入资源库生成的 custom_eval 配置')
@@ -281,28 +281,28 @@ export function RunWizard() {
     setRunning(true)
     try {
       let config: any
-      let pluginsList: string[]
+      let evaluatorsList: string[]
 
       if (source === 'manual') {
         const parsed = JSON.parse(configText)
-        const mergedPlugins = { ...(parsed.plugins || {}) }
-        for (const name of selectedPlugins) {
-          mergedPlugins[name] = { enabled: true, ...(mergedPlugins[name] || {}) }
+        const mergedEvaluators = { ...(parsed.evaluators || {}) }
+        for (const name of selectedEvaluators) {
+          mergedEvaluators[name] = { enabled: true, ...(mergedEvaluators[name] || {}) }
         }
-        config = { ...parsed, plugins: mergedPlugins }
-        pluginsList = selectedPlugins
+        config = { ...parsed, evaluators: mergedEvaluators }
+        evaluatorsList = selectedEvaluators
       } else {
         config = {
           orchestrator: runDefaults.orchestrator,
           agent: { type: 'callable', module: '', config: { model: agent.split(':')[1] || 'gpt-4o-mini', temperature: 0 } },
-          plugins: { custom_eval: previewConfig },
+          evaluators: { custom_eval: previewConfig },
           eval_config: { priority: 'normal' },
           report: { formats: runDefaults.report_formats, output_dir: outputDir },
         }
-        pluginsList = ['custom_eval']
+        evaluatorsList = ['custom_eval']
       }
 
-      const run = await api.createRun({ agent, config, plugins: pluginsList, output_dir: outputDir })
+      const run = await api.createRun({ agent, config, evaluators: evaluatorsList, output_dir: outputDir })
       navigate(`/live/${run.run_id}`)
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '启动失败')
@@ -354,11 +354,11 @@ export function RunWizard() {
               </button>
               <button className={`source-card ${source === 'local-trace' ? 'selected' : ''}`} onClick={() => setSource('local-trace')}>
                 <strong>从本地 Trace</strong>
-                <small className="muted">从 trace_store 选择本地样本 → 选 Scorer</small>
+                <small className="muted">从 trace_store 选择本地样本 → 选打分器</small>
               </button>
               <button className={`source-card ${source === 'manual' ? 'selected' : ''}`} onClick={() => setSource('manual')}>
                 <strong>手动配置</strong>
-                <small className="muted">JSON 编辑器 + 插件选择，适合自定义评测</small>
+                <small className="muted">JSON 编辑器 + 评估器选择，适合自定义评测</small>
               </button>
             </div>
           </div>
@@ -396,7 +396,7 @@ export function RunWizard() {
 
         {step === 'lf-session' && (
           <div className="wizard-pane">
-            <h3>选择 Session</h3>
+            <h3>选择会话</h3>
             <p className="muted">从 Langfuse 中选择一个 Session，加载其中的 Traces。</p>
             <div className="actions-inline" style={{ marginBottom: 12 }}>
               <button onClick={loadSessions} disabled={loadingSessions}>
@@ -421,7 +421,7 @@ export function RunWizard() {
                 })}
               </div>
             ) : (
-              <div className="empty-hint">{loadingSessions ? '加载中...' : '点击刷新按钮加载 Sessions'}</div>
+              <div className="empty-hint">{loadingSessions ? '加载中...' : '点击刷新按钮加载会话'}</div>
             )}
           </div>
         )}
@@ -475,7 +475,7 @@ export function RunWizard() {
         {step === 'local-traces' && (
           <div className="wizard-pane">
             <h3>选择本地 Trace</h3>
-            <p className="muted">从本地 trace store 选择评测样本。</p>
+            <p className="muted">从本地 trace store选择评测样本。</p>
             <div className="actions-inline" style={{ marginBottom: 12 }}>
               <button onClick={() => setSelectedTraceIds(filteredLocal.map((t) => t.trace_id))}>全选</button>
               <button onClick={() => setSelectedTraceIds([])}>清空</button>
@@ -483,7 +483,7 @@ export function RunWizard() {
               <span className="muted">已选 {selectedTraceIds.length} / {localTraces.length}</span>
             </div>
             {filteredLocal.length === 0 ? (
-              <div className="empty-hint">{localTraceQuery ? '没有匹配的结果' : '本地 trace store 为空'}</div>
+              <div className="empty-hint">{localTraceQuery ? '没有匹配的结果' : '本地 trace store为空'}</div>
             ) : (
               <div className="wizard-virtual-list">
                 <VirtualList
@@ -527,7 +527,7 @@ export function RunWizard() {
         {step === 'manual-config' && (
           <div className="wizard-pane">
             <h3>编辑评测配置</h3>
-            <p className="muted">在 JSON 中调整插件配置，或用右侧 Custom Eval Builder 辅助。</p>
+            <p className="muted">在 JSON 中调整评估器配置，或用右侧 Custom Eval Builder 辅助。</p>
             <div className="two-column modal-form">
               <div className="form">
                 <label>配置 JSON</label>
@@ -543,8 +543,8 @@ export function RunWizard() {
                   onApply={(c) => setConfigText(JSON.stringify(c, null, 2))}
                 />
                 <div className="card">
-                  <h3>选择插件</h3>
-                  <PluginSelector plugins={plugins} selected={selectedPlugins} onChange={setSelectedPlugins} />
+                  <h3>选择评估器</h3>
+                  <EvaluatorSelector evaluators={evaluators} selected={selectedEvaluators} onChange={setSelectedEvaluators} />
                 </div>
               </div>
             </div>
@@ -553,7 +553,7 @@ export function RunWizard() {
 
         {step === 'scorers' && (
           <div className="wizard-pane">
-            <h3>选择 Scorer</h3>
+            <h3>选择打分器</h3>
             <p className="muted">选择用于评测的 Scorer，可多选。</p>
             <div className="wizard-list compact">
               {scorers.map((s) => (
@@ -587,16 +587,16 @@ export function RunWizard() {
             <div className="card" style={{ marginTop: 12 }}>
               {source === 'langfuse' && <div className="stat-row"><span>Langfuse Trace</span><strong>{selectedLfTraceIds.length}</strong></div>}
               {source === 'local-trace' && <div className="stat-row"><span>本地 Trace</span><strong>{selectedTraceIds.length}</strong></div>}
-              {source !== 'manual' && <div className="stat-row"><span>Scorer</span><strong>{selectedScorers.length}</strong></div>}
-              {source === 'manual' && <div className="stat-row"><span>插件</span><strong>{selectedPlugins.length}</strong></div>}
+              {source !== 'manual' && <div className="stat-row"><span>打分器</span><strong>{selectedScorers.length}</strong></div>}
+              {source === 'manual' && <div className="stat-row"><span>评估器</span><strong>{selectedEvaluators.length}</strong></div>}
             </div>
           </div>
         )}
 
         {step === 'run' && (
           <div className="wizard-pane">
-            <h3>启动评测</h3>
-            <p className="muted">设置 Agent 和输出目录后启动评测，可在「运行监测」查看进度。</p>
+            <h3>启动实验</h3>
+            <p className="muted">设置 Agent 和输出目录后启动实验，可在「实验监测」查看进度。</p>
             <div className="card form">
               <label>Agent Spec</label>
               <input value={agent} onChange={(e) => setAgent(e.target.value)} placeholder="openai:gpt-4o-mini" />

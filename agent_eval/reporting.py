@@ -62,7 +62,7 @@ class ReportGenerator:
             </tr>"""
 
         plugin_rows = ""
-        for name, pr in report.plugin_results.items():
+        for name, pr in report.evaluator_results.items():
             plugin_rows += f"""
             <tr>
                 <td>{html.escape(str(name))}</td>
@@ -119,9 +119,9 @@ class ReportGenerator:
     </div>
 
     <div class="card">
-        <h2>Plugin Results</h2>
+        <h2>Evaluator Results</h2>
         <table>
-            <tr><th>Plugin</th><th>Type</th><th>Score</th><th>Passed</th></tr>
+            <tr><th>Evaluator</th><th>Type</th><th>Score</th><th>Passed</th></tr>
             {plugin_rows}
         </table>
     </div>
@@ -151,8 +151,8 @@ class ReportGenerator:
             bar = "█" * int(score * 20)
             lines.append(f"| {dim} | {score:.3f} {bar} |")
 
-        lines.extend(["", "## Plugin Results", "| Plugin | Type | Score | Passed |", "|--------|------|-------|--------|"])
-        for name, pr in report.plugin_results.items():
+        lines.extend(["", "## Evaluator Results", "| Evaluator | Type | Score | Passed |", "|--------|------|-------|--------|"])
+        for name, pr in report.evaluator_results.items():
             lines.append(f"| {name} | {pr.get('type', '')} | {pr.get('score', 0):.3f} | {pr.get('passed', 0)}/{pr.get('total', 0)} |")
 
         return "\n".join(lines)

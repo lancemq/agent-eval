@@ -1,12 +1,12 @@
 """AgentEval - A pluggable evaluation framework for AI agents."""
 
-from agent_eval.plugins.base import (
-    BasePlugin,
+from agent_eval.evaluators.base import (
+    BaseEvaluator,
     EvaluationType,
     EvalContext,
     EvalResult,
-    register_plugin,
-    PluginRegistry,
+    register_evaluator,
+    EvaluatorRegistry,
 )
 from agent_eval.orchestrator import EvaluationOrchestrator
 from agent_eval.judges.base import BaseJudge
@@ -59,18 +59,20 @@ from agent_eval.trace import (
     TraceAnalyzer,
     TracePlayer,
     TaskGenerator,
-    DatasetBuilder,
 )
+
+# Dataset builder (trace -> dataset importer)
+from agent_eval.datasets import DatasetBuilder
 
 __version__ = "0.1.0"
 
 __all__ = [
-    "BasePlugin",
+    "BaseEvaluator",
     "EvaluationType",
     "EvalContext",
     "EvalResult",
-    "register_plugin",
-    "PluginRegistry",
+    "register_evaluator",
+    "EvaluatorRegistry",
     "EvaluationOrchestrator",
     "OrchestratorConfig",
     "BaseJudge",

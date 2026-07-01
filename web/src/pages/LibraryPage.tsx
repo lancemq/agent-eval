@@ -3,9 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { VirtualList } from '../components/VirtualList'
 import { useAppStore } from '../stores/appStore'
-import type { LangfuseConfig, LangfuseSession, LangfuseTrace, ParamSpec, PluginInfo, ScorerInfo, TraceRecord, TraceSummary } from '../api/types'
+import type { LangfuseConfig, LangfuseSession, LangfuseTrace, ParamSpec, EvaluatorInfo, ScorerInfo, TraceRecord, TraceScoreResult, TraceSummary } from '../api/types'
+import { Modal } from '../components/Modal'
 
-type SubTab = 'trace' | 'scorer' | 'plugin'
+type SubTab = 'trace' | 'scorer' | 'evaluator'
 
 const defaultLangfuseConfig: LangfuseConfig = {
   host: 'https://cloud.langfuse.com',
@@ -21,7 +22,7 @@ export function LibraryPage() {
   const [tab, setTab] = useState<SubTab>((urlTab as SubTab) || 'trace')
 
   useEffect(() => {
-    if (urlTab && ['trace', 'scorer', 'plugin'].includes(urlTab)) setTab(urlTab as SubTab)
+    if (urlTab && ['trace', 'scorer', 'evaluator'].includes(urlTab)) setTab(urlTab as SubTab)
   }, [urlTab])
 
   return (
@@ -31,12 +32,12 @@ export function LibraryPage() {
       </div>
       <div className="tab-bar">
         <button className={tab === 'trace' ? 'tab active' : 'tab'} onClick={() => { setTab('trace'); navigate('/library/trace') }}>Trace</button>
-        <button className={tab === 'scorer' ? 'tab active' : 'tab'} onClick={() => { setTab('scorer'); navigate('/library/scorer') }}>Scorer</button>
-        <button className={tab === 'plugin' ? 'tab active' : 'tab'} onClick={() => { setTab('plugin'); navigate('/library/plugin') }}>插件</button>
+        <button className={tab === 'scorer' ? 'tab active' : 'tab'} onClick={() => { setTab('scorer'); navigate('/library/scorer') }}>打分器</button>
+        <button className={tab === 'evaluator' ? 'tab active' : 'tab'} onClick={() => { setTab('evaluator'); navigate('/library/evaluator') }}>评估器</button>
       </div>
       {tab === 'trace' && <TraceSection />}
       {tab === 'scorer' && <ScorerSection />}
-      {tab === 'plugin' && <PluginSection />}
+      {tab === 'evaluator' && <EvaluatorSection />}
     </section>
   )
 }
@@ -139,6 +140,24 @@ function TraceSection() {
     }
   }
 
+  const [scoreResult, setScoreResult] = useState<TraceScoreResult | null>(null)
+  const [scoring, setScoring] = useState(false)
+
+  async function runScoring() {
+    if (selectedTraceIds.length === 0) return setMessage('请至少选择一个 trace')
+    if (selectedScorers.length === 0) return setMessage('请至少选择一个 scorer')
+    setScoring(true)
+    setMessage('')
+    try {
+      const result = await api.scoreTraces(selectedTraceIds, selectedScorers)
+      setScoreResult(result)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '评分失败')
+    } finally {
+      setScoring(false)
+    }
+  }
+
   async function testLangfuse() {
     try {
       const result = await api.testLangfuse()
@@ -207,6 +226,7 @@ function TraceSection() {
       {message && <p className="message">{message}</p>}
 
       {subTab === 'local' ? (
+        <>
         <div className="trace-three-pane">
           <div className="pane pane-list">
             <div className="pane-header">
@@ -222,7 +242,7 @@ function TraceSection() {
             </div>
             <div className="pane-body">
               {filteredLocal.length === 0 ? (
-                <EmptyPane label="暂无 Trace" hint={query ? '没有匹配的结果' : '本地 trace store 为空'} />
+                <EmptyPane label="暂无 Trace" hint={query ? '没有匹配的结果' : '本地 trace store为空'} />
               ) : (
                 <VirtualList
                   className="row-list row-list-virtual"
@@ -257,6 +277,7 @@ function TraceSection() {
             <div className="pane-footer">
               <span className="muted">已选 {selectedTraceIds.length}</span>
               <button className="primary" onClick={createEval}>生成评测配置 →</button>
+              <button onClick={runScoring} disabled={scoring}>{scoring ? '评分中...' : '批量评分'}</button>
             </div>
           </div>
 
@@ -280,6 +301,10 @@ function TraceSection() {
             </div>
           </div>
         </div>
+        {scoreResult && (
+          <ScoreResultModal result={scoreResult} onClose={() => setScoreResult(null)} />
+        )}
+        </>
       ) : (
         <>
           <div className="card connection-card">
@@ -299,16 +324,16 @@ function TraceSection() {
               </span>
               <button onClick={() => navigate('/settings')}>配置中心</button>
               <button onClick={testLangfuse}>测试连接</button>
-              <button className="primary" onClick={loadSessions}>加载 Sessions</button>
+              <button className="primary" onClick={loadSessions}>加载会话</button>
             </div>
           </div>
 
           <div className="trace-three-pane">
-            {/* Sessions pane */}
+            {/* 会话面板 */}
             <div className="pane pane-list">
               <div className="pane-header">
                 <div className="pane-header-row">
-                  <h3>Sessions <small>{filteredSessions.length}/{sessions.length}</small></h3>
+                  <h3>会话 <small>{filteredSessions.length}/{sessions.length}</small></h3>
                 </div>
                 <input
                   placeholder="搜索 session id / name / user"
@@ -318,7 +343,7 @@ function TraceSection() {
               </div>
               <div className="pane-body">
                 {sessions.length === 0 ? (
-                  <EmptyPane label="尚未加载" hint="点击右上方「加载 Sessions」" />
+                  <EmptyPane label="尚未加载" hint="点击右上方「加载会话」" />
                 ) : filteredSessions.length === 0 ? (
                   <EmptyPane label="无匹配结果" hint="尝试清空搜索词" />
                 ) : (
@@ -363,7 +388,7 @@ function TraceSection() {
                 {activeSessionId && (
                   <>
                     <div className="pane-subhead">
-                      <span className="muted small">Session</span>
+                      <span className="muted small">会话</span>
                       <code className="ellipsis">{activeSessionId}</code>
                     </div>
                     <input
@@ -376,11 +401,11 @@ function TraceSection() {
               </div>
               <div className="pane-body">
                 {!activeSessionId ? (
-                  <EmptyPane label="请先选择 Session" hint="左侧点击任意 session 加载其 traces" />
+                  <EmptyPane label="请先选择会话" hint="左侧点击任意会话加载其 traces" />
                 ) : loadingTraces ? (
                   <EmptyPane label="加载中…" />
                 ) : filteredLangfuseTraces.length === 0 ? (
-                  <EmptyPane label="该 Session 暂无 trace" hint={traceQuery ? '尝试清空搜索词' : ''} />
+                  <EmptyPane label="该会话暂无 Trace" hint={traceQuery ? '尝试清空搜索词' : ''} />
                 ) : (
                   <VirtualList
                     className="row-list row-list-virtual"
@@ -426,7 +451,7 @@ function TraceSection() {
 
             {/* Scorer + detail pane */}
             <div className="pane pane-stack">
-              <div className="pane-header"><h3>Scorer <small>{selectedScorers.length}/{scorers.length}</small></h3></div>
+              <div className="pane-header"><h3 >打分器 <small>{selectedScorers.length}/{scorers.length}</small></h3></div>
               <div className="pane-body pane-body-padded option-list-pane">
                 {scorers.map((scorer) => (
                   <label className="check-row" key={scorer.type}>
@@ -467,7 +492,7 @@ function TraceSection() {
   )
 }
 
-/* ───── Scorer Pane ───── */
+/* ───── 打分器面板 ───── */
 
 function ScorerPane({
   scorers,
@@ -480,7 +505,7 @@ function ScorerPane({
 }) {
   return (
     <div className="pane">
-      <div className="pane-header"><h3>Scorer <small>{selectedScorers.length}/{scorers.length}</small></h3></div>
+      <div className="pane-header"><h3 >打分器 <small>{selectedScorers.length}/{scorers.length}</small></h3></div>
       <div className="pane-body pane-body-padded option-list-pane">
         {scorers.map((scorer) => (
           <label className="check-row" key={scorer.type}>
@@ -501,7 +526,7 @@ function ScorerPane({
   )
 }
 
-/* ───── Scorer ───── */
+/* ───── 打分器 ───── */
 
 function ScorerSection() {
   const [scorers, setScorers] = useState<ScorerInfo[]>([])
@@ -528,10 +553,10 @@ function ScorerSection() {
       <div className="pane pane-list">
         <div className="pane-header">
           <div className="pane-header-row">
-            <h3>Scorer <small>{filtered.length}/{scorers.length}</small></h3>
+            <h3 >打分器 <small>{filtered.length}/{scorers.length}</small></h3>
             <span className="muted small">已选 {selectedScorers.length}</span>
           </div>
-          <input placeholder="搜索 scorer / 用途 / 维度" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input placeholder="搜索 scorer / 用途 / 指标" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <div className="pane-body">
           {filtered.length === 0 ? (
@@ -581,34 +606,34 @@ function ScorerSection() {
   )
 }
 
-/* ───── Plugin ───── */
+/* ───── Evaluator ───── */
 
-function PluginSection() {
-  const [plugins, setPlugins] = useState<PluginInfo[]>([])
+function EvaluatorSection() {
+  const [evaluators, setEvaluators] = useState<EvaluatorInfo[]>([])
   const [query, setQuery] = useState('')
   const [activeName, setActiveName] = useState<string | null>(null)
 
-  useEffect(() => { api.plugins().then(setPlugins).catch(console.error) }, [])
+  useEffect(() => { api.evaluators().then(setEvaluators).catch(console.error) }, [])
 
   const filtered = useMemo(
-    () => plugins.filter((p) =>
+    () => evaluators.filter((p) =>
       `${p.name} ${p.type} ${p.description} ${p.dimensions.join(' ')} ${(p.use_cases || []).join(' ')}`
         .toLowerCase()
         .includes(query.toLowerCase()),
     ),
-    [plugins, query],
+    [evaluators, query],
   )
 
-  const active = useMemo(() => plugins.find((p) => p.name === activeName) || null, [plugins, activeName])
+  const active = useMemo(() => evaluators.find((p) => p.name === activeName) || null, [evaluators, activeName])
 
   return (
     <div className="library-detail-layout">
       <div className="pane pane-list">
         <div className="pane-header">
           <div className="pane-header-row">
-            <h3>插件 <small>{filtered.length}/{plugins.length}</small></h3>
+            <h3>评估器 <small>{filtered.length}/{evaluators.length}</small></h3>
           </div>
-          <input placeholder="搜索 plugin / 类型 / 维度 / 场景" value={query} onChange={(event) => setQuery(event.target.value)} />
+          <input placeholder="搜索评估器 / 类型 / 指标 / 场景" value={query} onChange={(event) => setQuery(event.target.value)} />
         </div>
         <div className="pane-body">
           {filtered.length === 0 ? (
@@ -648,13 +673,13 @@ function PluginSection() {
         dimensions={active?.dimensions || []}
         useCases={active?.use_cases || []}
         example={active?.example}
-        emptyHint="点击左侧条目查看插件详细参数和示例"
+        emptyHint="点击左侧条目查看评估器详细参数和示例"
       />
     </div>
   )
 }
 
-/* ───── Detail Panel (shared by scorer & plugin) ───── */
+/* ───── Detail Panel (shared by scorer & evaluator) ───── */
 
 function DetailPanel({
   title,
@@ -719,7 +744,7 @@ function DetailPanel({
 
         {dimensions && dimensions.length > 0 && (
           <section className="detail-section">
-            <h4>评测维度</h4>
+            <h4>评估指标</h4>
             <div className="tags">{dimensions.map((dim) => <span key={dim}>{dim}</span>)}</div>
           </section>
         )}
@@ -819,4 +844,36 @@ function getLangfuseId(item: LangfuseSession | LangfuseTrace): string {
 function formatValue(value: any): string {
   if (value === undefined || value === null) return ''
   return typeof value === 'string' ? value : JSON.stringify(value, null, 2)
+}
+
+function ScoreResultModal({ result, onClose }: { result: TraceScoreResult; onClose: () => void }) {
+  return (
+    <Modal open={true} title={`Trace 评分结果（均值 ${result.summary.mean_score.toFixed(3)} · 通过率 ${(result.summary.pass_rate * 100).toFixed(1)}%）`} onClose={onClose} width="800px">
+      <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+        {result.results.map((r) => (
+          <div key={r.trace_id} className="card" style={{ marginBottom: 8, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <code>{r.trace_id.slice(0, 16)}</code>
+              {r.error && <span style={{ color: 'var(--danger, #c0392b)' }}>{r.error}</span>}
+            </div>
+            {!r.error && (
+              <>
+                <div className="actions-inline" style={{ gap: 12, flexWrap: 'wrap' }}>
+                  {r.scores.map((s) => (
+                    <div key={s.name} style={{ textAlign: 'center' }}>
+                      <div style={{ fontWeight: 600, color: s.passed ? 'var(--success, #27ae60)' : 'var(--danger, #c0392b)' }}>
+                        {s.score.toFixed(3)}
+                      </div>
+                      <div className="muted" style={{ fontSize: 11 }}>{s.name}</div>
+                      {s.reason && <div className="muted" style={{ fontSize: 10, maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.reason}>{s.reason}</div>}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </Modal>
+  )
 }

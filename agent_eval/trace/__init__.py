@@ -8,7 +8,7 @@ from agent_eval.trace.normalizers import (
     OpenTelemetryNormalizer, LangSmithNormalizer,
     get_normalizer, auto_detect_normalizer, list_normalizers,
 )
-from agent_eval.trace.task_generator import TaskGenerator, DatasetBuilder, EvalTask
+from agent_eval.trace.task_generator import TaskGenerator, EvalTask
 from agent_eval.trace.analyzer import TraceAnalyzer, AnalysisReport, TraceQualityScore
 from agent_eval.trace.replay import TracePlayer
 
@@ -18,7 +18,7 @@ __all__ = [
     "BaseTraceNormalizer", "CustomJSONNormalizer", "SelfEvalNormalizer",
     "OpenTelemetryNormalizer", "LangSmithNormalizer",
     "get_normalizer", "auto_detect_normalizer", "list_normalizers",
-    "TaskGenerator", "DatasetBuilder", "EvalTask",
+    "TaskGenerator", "EvalTask",
     "TraceAnalyzer", "AnalysisReport", "TraceQualityScore",
     "TracePlayer",
 ]

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ScorerInfo } from '../api/types'
+import type { DatasetSummary, ScorerInfo } from '../api/types'
 
 type Props = {
   config: any
@@ -15,10 +16,14 @@ const defaultTasks = [
 export function CustomEvalBuilder({ config, onApply }: Props) {
   const [enabled, setEnabled] = useState(true)
   const [scorers, setScorers] = useState<ScorerInfo[]>([])
+  const [datasets, setDatasets] = useState<DatasetSummary[]>([])
   const [id, setId] = useState('qa_basic')
   const [name, setName] = useState('Basic QA Evaluation')
   const [dimensions, setDimensions] = useState('correctness')
+  const [taskSourceMode, setTaskSourceMode] = useState<'inline' | 'dataset'>('inline')
   const [tasksText, setTasksText] = useState(JSON.stringify(defaultTasks, null, 2))
+  const [datasetName, setDatasetName] = useState('')
+  const [datasetVersion, setDatasetVersion] = useState('')
   const [template, setTemplate] = useState('Answer the following question concisely.\n\nQuestion: {input}')
   const [scorerType, setScorerType] = useState('exact_match')
   const [scorerParams, setScorerParams] = useState(JSON.stringify({ case_sensitive: false, strip: true }, null, 2))
@@ -28,25 +33,28 @@ export function CustomEvalBuilder({ config, onApply }: Props) {
 
   useEffect(() => {
     api.scorers().then(setScorers).catch(console.error)
+    api.datasets().then(setDatasets).catch(console.error)
   }, [])
 
   function apply() {
     try {
-      const tasks = JSON.parse(tasksText)
       const params = JSON.parse(scorerParams || '{}')
+      const taskSource = taskSourceMode === 'inline'
+        ? { type: 'inline', items: JSON.parse(tasksText) }
+        : { type: 'dataset', name: datasetName, ...(datasetVersion ? { version: datasetVersion } : {}) }
       const nextConfig = structuredClone(config || {})
-      nextConfig.plugins = nextConfig.plugins || {}
+      nextConfig.evaluators = nextConfig.evaluators || {}
       if (!enabled) {
-        delete nextConfig.plugins.custom_eval
+        delete nextConfig.evaluators.custom_eval
       } else {
-        nextConfig.plugins.custom_eval = {
+        nextConfig.evaluators.custom_eval = {
           enabled: true,
           evaluations: [
             {
               id,
               name,
               dimensions: dimensions.split(',').map((item) => item.trim()).filter(Boolean),
-              task_source: { type: 'inline', items: tasks },
+              task_source: taskSource,
               prompt: { mode: 'generate', template },
               scoring: {
                 threshold,
@@ -86,10 +94,36 @@ export function CustomEvalBuilder({ config, onApply }: Props) {
       <input value={id} onChange={(event) => setId(event.target.value)} />
       <label>展示名称</label>
       <input value={name} onChange={(event) => setName(event.target.value)} />
-      <label>维度，逗号分隔</label>
+      <label>指标，逗号分隔</label>
       <input value={dimensions} onChange={(event) => setDimensions(event.target.value)} />
-      <label>任务数据 JSON</label>
-      <textarea className="compact-textarea" value={tasksText} onChange={(event) => setTasksText(event.target.value)} />
+
+      <label>任务来源</label>
+      <div className="actions-inline">
+        <label className="switch-row"><input type="radio" checked={taskSourceMode === 'inline'} onChange={() => setTaskSourceMode('inline')} />内联 JSON</label>
+        <label className="switch-row"><input type="radio" checked={taskSourceMode === 'dataset'} onChange={() => setTaskSourceMode('dataset')} />引用数据集</label>
+        <Link to="/datasets" className="muted" style={{ marginLeft: 'auto' }}>管理数据集 →</Link>
+      </div>
+      {taskSourceMode === 'inline' ? (
+        <>
+          <label>任务数据 JSON</label>
+          <textarea className="compact-textarea" value={tasksText} onChange={(event) => setTasksText(event.target.value)} />
+        </>
+      ) : (
+        <div className="two-field-row">
+          <div>
+            <label>数据集名称</label>
+            <select value={datasetName} onChange={(event) => { setDatasetName(event.target.value); setDatasetVersion('') }}>
+              <option value="">请选择...</option>
+              {datasets.map((ds) => <option key={ds.name} value={ds.name}>{ds.name} (v{ds.latest_version}, {ds.row_count}行)</option>)}
+            </select>
+          </div>
+          <div>
+            <label>版本（可选，默认最新）</label>
+            <input value={datasetVersion} onChange={(event) => setDatasetVersion(event.target.value)} placeholder="留空用最新" />
+          </div>
+        </div>
+      )}
+
       <label>Prompt 模板</label>
       <textarea className="compact-textarea" value={template} onChange={(event) => setTemplate(event.target.value)} />
       <label>评分器</label>

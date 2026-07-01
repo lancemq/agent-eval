@@ -17,9 +17,9 @@ def _make_report(agent_name="<script>alert(1)</script>"):
             "total_failed": 0,
             "pass_rate": 1.0,
             "dimensions": {"<b>dim</b>": 0.5},
-            "num_plugins": 1,
+            "num_evaluators": 1,
         },
-        plugin_results={
+        evaluator_results={
             "<img onerror=alert(1)>": {
                 "score": 0.5,
                 "type": "<script>",

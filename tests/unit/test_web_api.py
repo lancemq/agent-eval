@@ -19,10 +19,10 @@ def test_health_endpoint(tmp_path):
 def test_plugins_endpoint(tmp_path):
     client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
 
-    response = client.get("/api/plugins")
+    response = client.get("/api/evaluators")
 
     assert response.status_code == 200
-    assert "plugins" in response.json()
+    assert "evaluators" in response.json()
 
 
 def test_validate_config_rejects_bad_storage(tmp_path):
@@ -57,15 +57,15 @@ def test_scorers_endpoint(tmp_path):
 def test_plugins_include_custom_eval(tmp_path):
     client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
 
-    response = client.get("/api/plugins")
+    response = client.get("/api/evaluators")
 
-    assert any(plugin["name"] == "custom_eval" for plugin in response.json()["plugins"])
+    assert any(evaluator["name"] == "custom_eval" for evaluator in response.json()["evaluators"])
 
 
 def test_validate_config_accepts_custom_eval(tmp_path):
     client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
     config = {
-        "plugins": {
+        "evaluators": {
             "custom_eval": {
                 "enabled": True,
                 "evaluations": [
@@ -89,7 +89,7 @@ def test_validate_config_accepts_custom_eval(tmp_path):
 def test_validate_config_rejects_custom_eval_bad_scorer(tmp_path):
     client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
     config = {
-        "plugins": {
+        "evaluators": {
             "custom_eval": {
                 "enabled": True,
                 "evaluations": [
@@ -337,3 +337,69 @@ def test_langfuse_trace_eval_config_endpoint_builds_custom_eval(tmp_path):
     assert item["input"] == "2+2?"
     assert item["expected"] == "4"
     assert item["metadata"]["langfuse_session_id"] == "session-1"
+
+
+def test_dataset_crud_endpoints(tmp_path):
+    client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
+
+    # create
+    resp = client.post("/api/datasets", json={
+        "name": "ds1",
+        "rows": [{"task_id": "t1", "input": "hi", "expected": "hello"}],
+        "description": "first",
+    })
+    assert resp.status_code == 200
+    assert resp.json()["version"] == "1.0.0"
+
+    # list
+    resp = client.get("/api/datasets")
+    assert resp.status_code == 200
+    assert resp.json()["datasets"][0]["name"] == "ds1"
+
+    # get
+    resp = client.get("/api/datasets/ds1")
+    assert resp.status_code == 200
+    assert resp.json()["rows"][0]["task_id"] == "t1"
+
+    # update rows
+    resp = client.put("/api/datasets/ds1/rows", json={
+        "rows": [{"task_id": "t1", "input": "hi", "expected": "changed"}],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["version"] == "1.0.1"
+
+    # add version
+    resp = client.post("/api/datasets/ds1/versions", json={
+        "rows": [{"task_id": "t1"}, {"task_id": "t2"}],
+    })
+    assert resp.status_code == 200
+    assert resp.json()["version"] == "1.1.0"
+
+    # diff
+    resp = client.get("/api/datasets/ds1/diff", params={"v1": "1.0.0", "v2": "1.1.0"})
+    assert resp.status_code == 200
+    assert resp.json()["summary"]["added"] == 1
+
+    # delete
+    resp = client.delete("/api/datasets/ds1")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+
+
+def test_trend_endpoint(tmp_path):
+    from agent_eval.orchestrator import EvaluationReport
+    from agent_eval.orchestrator.result_store import ResultStore
+
+    store = ResultStore({"type": "json", "output_dir": str(tmp_path)})
+    store.save(EvaluationReport(
+        run_id="r1", timestamp="2026-01-01T00:00:00Z",
+        agent_name="agent_a", agent_version="1.0",
+        summary={"overall_score": 0.8, "pass_rate": 0.8, "dimensions": {"acc": 0.8}},
+        evaluator_results={}, metadata={"agent_name": "agent_a"},
+    ))
+    client = TestClient(create_app(output_dir=str(tmp_path), workspace=str(tmp_path)))
+    resp = client.get("/api/trend", params={"agent_name": "agent_a"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["points"]) == 1
+    assert data["points"][0]["overall_score"] == 0.8

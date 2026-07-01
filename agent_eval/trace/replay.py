@@ -12,7 +12,7 @@ from agent_eval.trace.store import TraceStore
 class TracePlayer(AgentUnderTest):
     """Replays pre-recorded agent traces for offline evaluation.
 
-    Wraps recorded traces as an AgentUnderTest, so any existing plugin
+    Wraps recorded traces as an AgentUnderTest, so any existing evaluator
     (tool_use, multi_turn) can run unchanged against recorded data.
 
     Usage:

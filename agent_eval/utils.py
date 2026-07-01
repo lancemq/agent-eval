@@ -78,7 +78,7 @@ def format_score(score: float, precision: int = 3) -> str:
 
 
 def resolve_config_path(path: str, config: Dict) -> str:
-    """Resolve plugin file paths relative to the evaluation config file."""
+    """Resolve evaluator file paths relative to the evaluation config file."""
     if not path or os.path.isabs(path):
         return path
     base_dir = config.get("_config_dir")

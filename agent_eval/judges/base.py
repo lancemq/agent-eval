@@ -33,7 +33,7 @@ class BaseJudge(ABC):
         pass
     
     def judge(self, **kwargs) -> JudgeResult:
-        """Unified judge interface for plugins that use direct judging."""
+        """Unified judge interface for evaluators that use direct judging."""
         import time
         start = time.time()
         

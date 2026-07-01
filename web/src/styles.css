@@ -370,14 +370,14 @@ code {
   align-items: center;
   flex-wrap: wrap;
 }
-.plugin-grid {
+.evaluator-grid {
   display: grid;
   gap: 10px;
   max-height: 760px;
   overflow: auto;
   padding-right: 3px;
 }
-.plugin-card {
+.evaluator-card {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 12px;
@@ -385,12 +385,12 @@ code {
   box-shadow: var(--shadow-sm);
   transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
-.plugin-card:hover {
+.evaluator-card:hover {
   transform: translateY(-1px);
   border-color: var(--accent);
   background: var(--surface-2);
 }
-.plugin-card input, .check-row input, td input {
+.evaluator-card input, .check-row input, td input {
   width: auto;
   accent-color: var(--accent);
 }
@@ -401,12 +401,12 @@ code {
   overflow: auto;
   padding-right: 4px;
 }
-.plugin-card small {
+.evaluator-card small {
   display: block;
   color: var(--text-3);
   margin-top: 3px;
 }
-.plugin-card p {
+.evaluator-card p {
   margin: 8px 0;
   color: var(--text-2);
 }
@@ -1000,7 +1000,7 @@ code {
 .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .small { font-size: 11px; }
 
-/* ============ Library detail layout (scorer / plugin) ============ */
+/* ============ Library detail layout (scorer / evaluator) ============ */
 .library-detail-layout {
   display: grid;
   grid-template-columns: minmax(320px, 380px) minmax(360px, 1fr);

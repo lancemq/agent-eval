@@ -111,7 +111,7 @@ class SelfEvalNormalizer(BaseTraceNormalizer):
     """
 
     def can_handle(self, raw: Dict[str, Any]) -> bool:
-        return "plugin_name" in raw and "evaluation_type" in raw
+        return "evaluator_name" in raw and "evaluation_type" in raw
 
     def normalize(self, raw: Dict[str, Any]) -> TraceRecord:
         details = raw.get("details", {})
@@ -161,7 +161,7 @@ class SelfEvalNormalizer(BaseTraceNormalizer):
             output=output_text,
             tool_calls=tool_calls,
             metadata={
-                "plugin_name": raw.get("plugin_name", ""),
+                "evaluator_name": raw.get("evaluator_name", ""),
                 "evaluation_type": raw.get("evaluation_type", ""),
                 "score": raw.get("score", 0),
                 "passed": raw.get("passed", False),
@@ -172,7 +172,7 @@ class SelfEvalNormalizer(BaseTraceNormalizer):
             error=raw.get("error"),
             duration_ms=raw.get("execution_time_ms", 0),
             source="self_eval",
-            tags=[raw.get("plugin_name", "")] if raw.get("plugin_name") else [],
+            tags=[raw.get("evaluator_name", "")] if raw.get("evaluator_name") else [],
             quality_score=float(raw.get("score", 0)),
         )
         return record

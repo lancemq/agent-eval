@@ -8,7 +8,7 @@ Usage:
     from agent_eval.async_pipeline import AsyncOrchestrator
 
     orch = AsyncOrchestrator(config)
-    report = await orch.run_evaluation(agent, plugin_names)
+    report = await orch.run_evaluation(agent, evaluator_names)
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from agent_eval.plugins.base import BasePlugin, EvalContext, EvalResult, PluginRegistry
+from agent_eval.evaluators.base import BaseEvaluator, EvalContext, EvalResult, EvaluatorRegistry
 from agent_eval.orchestrator.agent import AgentUnderTest
 from agent_eval.orchestrator.result_store import ResultStore, EvaluationReport
 from agent_eval.orchestrator.hooks import HookManager
@@ -124,13 +124,13 @@ class AsyncOrchestrator:
     async def run_evaluation(
         self,
         agent: AgentUnderTest,
-        plugin_names: List[str],
+        evaluator_names: List[str],
         eval_config: Dict[str, Any] = None,
-        plugin_configs: Dict[str, Dict[str, Any]] = None,
+        evaluator_configs: Dict[str, Dict[str, Any]] = None,
     ) -> EvaluationReport:
         """Run async evaluation pipeline."""
         eval_config = eval_config or {}
-        plugin_configs = plugin_configs or {}
+        evaluator_configs = evaluator_configs or {}
         run_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -149,15 +149,15 @@ class AsyncOrchestrator:
         )
 
         self.hooks.trigger("evaluation_start", context)
-        self.logger.info(f"Starting async evaluation {run_id} with plugins: {plugin_names}")
+        self.logger.info(f"Starting async evaluation {run_id} with evaluators: {evaluator_names}")
 
         start_time = time.time()
-        plugins: List[BasePlugin] = []
+        evaluators: List[BaseEvaluator] = []
 
         try:
-            plugins = self._init_plugins(plugin_names, eval_config, plugin_configs)
-            all_results = await self._execute_plugins_async(plugins, context)
-            report = self._generate_report(run_id, timestamp, agent, context, all_results, plugins)
+            evaluators = self._init_evaluators(evaluator_names, eval_config, evaluator_configs)
+            all_results = await self._execute_plugins_async(evaluators, context)
+            report = self._generate_report(run_id, timestamp, agent, context, all_results, evaluators)
 
             elapsed = time.time() - start_time
             self.logger.info(
@@ -170,59 +170,59 @@ class AsyncOrchestrator:
             self.hooks.trigger("evaluation_complete", report)
             return report
         finally:
-            self._teardown_plugins(plugins)
+            self._teardown_evaluators(evaluators)
 
-    def _init_plugins(
+    def _init_evaluators(
         self,
-        plugin_names: List[str],
+        evaluator_names: List[str],
         eval_config: Dict[str, Any],
-        plugin_configs: Dict[str, Dict[str, Any]],
-    ) -> List[BasePlugin]:
-        plugins: List[BasePlugin] = []
-        for name in plugin_names:
-            plugin = PluginRegistry.get(name)
-            plugin_config = {**eval_config.get(name, {}), **(plugin_configs.get(name, {}))}
-            plugin.setup(plugin_config)
-            plugins.append(plugin)
-            self.logger.info(f"Plugin '{name}' initialized")
-        return plugins
+        evaluator_configs: Dict[str, Dict[str, Any]],
+    ) -> List[BaseEvaluator]:
+        evaluators: List[BaseEvaluator] = []
+        for name in evaluator_names:
+            evaluator = EvaluatorRegistry.get(name)
+            evaluator_config = {**eval_config.get(name, {}), **(evaluator_configs.get(name, {}))}
+            evaluator.setup(evaluator_config)
+            evaluators.append(evaluator)
+            self.logger.info(f"Evaluator '{name}' initialized")
+        return evaluators
 
     async def _execute_plugins_async(
-        self, plugins: List[BasePlugin], context: EvalContext
+        self, evaluators: List[BaseEvaluator], context: EvalContext
     ) -> Dict[str, List[EvalResult]]:
         all_results: Dict[str, List[EvalResult]] = {}
         max_workers = getattr(self.config, "max_workers", 4)
 
-        for plugin in plugins:
+        for evaluator in evaluators:
             if self._cancelled:
-                self.logger.warning("Evaluation cancelled before plugin '%s'", plugin.name)
+                self.logger.warning("Evaluation cancelled before evaluator '%s'", evaluator.name)
                 break
 
-            tasks = plugin.generate_tasks(context)
-            self.logger.info(f"Generated {len(tasks)} tasks for '{plugin.name}'")
+            tasks = evaluator.generate_tasks(context)
+            self.logger.info(f"Generated {len(tasks)} tasks for '{evaluator.name}'")
 
             semaphore = asyncio.Semaphore(max_workers)
             coros = [
-                self._execute_single_task_async(plugin, task_data, context, semaphore, attempt=1)
+                self._execute_single_task_async(evaluator, task_data, context, semaphore, attempt=1)
                 for task_data in tasks
             ]
             results = await asyncio.gather(*coros, return_exceptions=True)
 
-            plugin_results: List[EvalResult] = []
+            evaluator_results: List[EvalResult] = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    plugin_results.append(self._failure_result(plugin, str(tasks[i].get("task_id", str(i))), str(result)))
+                    evaluator_results.append(self._failure_result(evaluator, str(tasks[i].get("task_id", str(i))), str(result)))
                 else:
-                    plugin_results.append(result)
+                    evaluator_results.append(result)
 
-            all_results[plugin.name] = plugin_results
-            self.logger.info(f"Plugin '{plugin.name}': {len(plugin_results)} tasks evaluated")
+            all_results[evaluator.name] = evaluator_results
+            self.logger.info(f"Evaluator '{evaluator.name}': {len(evaluator_results)} tasks evaluated")
 
         return all_results
 
     async def _execute_single_task_async(
         self,
-        plugin: BasePlugin,
+        evaluator: BaseEvaluator,
         task: Dict[str, Any],
         context: EvalContext,
         semaphore: asyncio.Semaphore,
@@ -230,16 +230,16 @@ class AsyncOrchestrator:
     ) -> EvalResult:
         async with semaphore:
             if self._cancelled:
-                return self._failure_result(plugin, str(task.get("task_id", "")), "Cancelled")
+                return self._failure_result(evaluator, str(task.get("task_id", "")), "Cancelled")
 
-            self.hooks.trigger("task_execute", plugin, task)
+            self.hooks.trigger("task_execute", evaluator, task)
 
-            # Run sync plugin methods in executor to avoid blocking
+            # Run sync evaluator methods in executor to avoid blocking
             loop = asyncio.get_event_loop()
             try:
-                output = await loop.run_in_executor(None, plugin.execute_task, task, context)
-                self.hooks.trigger("task_evaluate", plugin, task, output)
-                result = plugin.evaluate(task, output, context)
+                output = await loop.run_in_executor(None, evaluator.execute_task, task, context)
+                self.hooks.trigger("task_evaluate", evaluator, task, output)
+                result = evaluator.evaluate(task, output, context)
                 result.details.setdefault("attempt", attempt)
                 self.hooks.trigger("task_complete", str(task.get("task_id", "")), result)
                 return result
@@ -248,13 +248,13 @@ class AsyncOrchestrator:
                 if attempt < getattr(self.config, "max_task_retries", 3):
                     self.logger.warning(f"Task {task.get('task_id', '?')} failed (attempt {attempt}): {e}; retrying")
                     await asyncio.sleep(self.config.max_task_retries if not hasattr(self.config, 'backoff') else 1.0)
-                    return await self._execute_single_task_async(plugin, task, context, semaphore, attempt + 1)
-                return self._failure_result(plugin, str(task.get("task_id", "")), str(e), attempt)
+                    return await self._execute_single_task_async(evaluator, task, context, semaphore, attempt + 1)
+                return self._failure_result(evaluator, str(task.get("task_id", "")), str(e), attempt)
 
-    def _failure_result(self, plugin: BasePlugin, task_id: str, error: str, attempts: int = 1) -> EvalResult:
+    def _failure_result(self, evaluator: BaseEvaluator, task_id: str, error: str, attempts: int = 1) -> EvalResult:
         return EvalResult(
-            plugin_name=plugin.name,
-            evaluation_type=plugin.evaluation_type,
+            evaluator_name=evaluator.name,
+            evaluation_type=evaluator.evaluation_type,
             score=0.0,
             raw_score={"error": error, "attempts": attempts},
             details={"attempts": attempts},
@@ -272,17 +272,17 @@ class AsyncOrchestrator:
         agent: AgentUnderTest,
         context: EvalContext,
         all_results: Dict[str, List[EvalResult]],
-        plugins: List[BasePlugin],
+        evaluators: List[BaseEvaluator],
     ) -> EvaluationReport:
-        plugin_results_summary: Dict[str, Any] = {}
+        evaluator_results_summary: Dict[str, Any] = {}
         dimension_scores: Dict[str, List[float]] = {}
         total_tasks = 0
         total_passed = 0
         total_score = 0.0
         all_task_scores: List[float] = []
 
-        for plugin in plugins:
-            results = all_results.get(plugin.name, [])
+        for evaluator in evaluators:
+            results = all_results.get(evaluator.name, [])
             if not results:
                 continue
 
@@ -290,13 +290,13 @@ class AsyncOrchestrator:
             scores = [r.score for r in results]
             avg_score = sum(scores) / len(scores) if scores else 0.0
 
-            plugin_results_summary[plugin.name] = {
+            evaluator_results_summary[evaluator.name] = {
                 "score": avg_score,
                 "passed": passed,
                 "failed": len(results) - passed,
                 "total": len(results),
                 "pass_rate": passed / len(results) if results else 0.0,
-                "type": plugin.evaluation_type.value,
+                "type": evaluator.evaluation_type.value,
             }
 
             total_tasks += len(results)
@@ -309,10 +309,10 @@ class AsyncOrchestrator:
                     for dim, score in result.dimension_scores.items():
                         dimension_scores.setdefault(dim, []).append(score)
                 else:
-                    for dim in plugin.supported_dimensions:
+                    for dim in evaluator.supported_dimensions:
                         dimension_scores.setdefault(dim, []).append(result.score)
 
-        macro_score = total_score / len(plugins) if plugins else 0.0
+        macro_score = total_score / len(evaluators) if evaluators else 0.0
         micro_score = sum(all_task_scores) / len(all_task_scores) if all_task_scores else 0.0
 
         summary = {
@@ -327,14 +327,14 @@ class AsyncOrchestrator:
                 dim: sum(scores) / len(scores)
                 for dim, scores in dimension_scores.items()
             },
-            "num_plugins": len(plugins),
+            "num_evaluators": len(evaluators),
             "mode": "async",
         }
 
         task_results = {
             pn: [
                 {
-                    "plugin_name": r.plugin_name,
+                    "evaluator_name": r.evaluator_name,
                     "evaluation_type": r.evaluation_type.value,
                     "score": r.score,
                     "raw_score": r.raw_score,
@@ -357,17 +357,17 @@ class AsyncOrchestrator:
             agent_name=agent.name,
             agent_version=agent.version,
             summary=summary,
-            plugin_results=plugin_results_summary,
+            evaluator_results=evaluator_results_summary,
             metadata=context.metadata,
             task_results=task_results,
         )
 
-    def _teardown_plugins(self, plugins: List[BasePlugin]) -> None:
-        for plugin in plugins:
+    def _teardown_evaluators(self, evaluators: List[BaseEvaluator]) -> None:
+        for evaluator in evaluators:
             try:
-                plugin.teardown()
+                evaluator.teardown()
             except Exception as e:
-                self.logger.warning(f"Plugin '{plugin.name}' teardown failed: {e}")
+                self.logger.warning(f"Evaluator '{evaluator.name}' teardown failed: {e}")
 
 
 def run_async(coro: Any) -> Any:

@@ -9,12 +9,12 @@ from agent_eval.orchestrator import (
     TaskPriority,
     TaskStatus,
 )
-from agent_eval.plugins.base import register_plugin
-from agent_eval.plugins.base import BasePlugin, EvaluationType, EvalResult
+from agent_eval.evaluators.base import register_evaluator
+from agent_eval.evaluators.base import BaseEvaluator, EvaluationType, EvalResult
 
 
-@register_plugin
-class MockPlugin(BasePlugin):
+@register_evaluator
+class MockPlugin(BaseEvaluator):
     name = "mock_plugin"
     evaluation_type = EvaluationType.CUSTOM
     supported_dimensions = ["mock"]
@@ -30,7 +30,7 @@ class MockPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=0.5 + task["id"] * 0.1,
             raw_score={},
@@ -42,8 +42,8 @@ class MockPlugin(BasePlugin):
         )
 
 
-@register_plugin
-class FailingPlugin(BasePlugin):
+@register_evaluator
+class FailingPlugin(BaseEvaluator):
     name = "failing_plugin"
     evaluation_type = EvaluationType.CUSTOM
     supported_dimensions = ["fail"]
@@ -59,7 +59,7 @@ class FailingPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=0.0,
             raw_score={},
@@ -70,8 +70,8 @@ class FailingPlugin(BasePlugin):
         )
 
 
-@register_plugin
-class ConfigPlugin(BasePlugin):
+@register_evaluator
+class ConfigPlugin(BaseEvaluator):
     name = "config_plugin"
     evaluation_type = EvaluationType.CUSTOM
     supported_dimensions = ["config"]
@@ -87,7 +87,7 @@ class ConfigPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=1.0 if output == "expected" else 0.0,
             raw_score={"output": output},
@@ -99,8 +99,8 @@ class ConfigPlugin(BasePlugin):
         )
 
 
-@register_plugin
-class StatefulPlugin(BasePlugin):
+@register_evaluator
+class StatefulPlugin(BaseEvaluator):
     name = "stateful_plugin"
     evaluation_type = EvaluationType.CUSTOM
     supported_dimensions = ["state"]
@@ -117,7 +117,7 @@ class StatefulPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=1.0 if output == 1 else 0.0,
             raw_score={"seen": output},
@@ -132,8 +132,8 @@ class StatefulPlugin(BasePlugin):
         type(self).teardown_count += 1
 
 
-@register_plugin
-class SetupFailingPlugin(BasePlugin):
+@register_evaluator
+class SetupFailingPlugin(BaseEvaluator):
     name = "setup_failing_plugin"
     evaluation_type = EvaluationType.CUSTOM
 
@@ -150,8 +150,8 @@ class SetupFailingPlugin(BasePlugin):
         raise AssertionError("should not evaluate")
 
 
-@register_plugin
-class GenerateFailingPlugin(BasePlugin):
+@register_evaluator
+class GenerateFailingPlugin(BaseEvaluator):
     name = "generate_failing_plugin"
     evaluation_type = EvaluationType.CUSTOM
     teardown_count = 0
@@ -172,8 +172,8 @@ class GenerateFailingPlugin(BasePlugin):
         type(self).teardown_count += 1
 
 
-@register_plugin
-class FlakyPlugin(BasePlugin):
+@register_evaluator
+class FlakyPlugin(BaseEvaluator):
     name = "flaky_plugin"
     evaluation_type = EvaluationType.CUSTOM
     supported_dimensions = ["retry"]
@@ -192,7 +192,7 @@ class FlakyPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=1.0,
             raw_score={"output": output},
@@ -227,9 +227,9 @@ def test_orchestrator_run_evaluation():
     assert report.summary["total_tasks"] == 3
     assert report.summary["total_passed"] == 2
     assert report.summary["pass_rate"] == 2 / 3
-    assert "mock_plugin" in report.plugin_results
-    assert report.plugin_results["mock_plugin"]["passed"] == 2
-    assert report.plugin_results["mock_plugin"]["total"] == 3
+    assert "mock_plugin" in report.evaluator_results
+    assert report.evaluator_results["mock_plugin"]["passed"] == 2
+    assert report.evaluator_results["mock_plugin"]["total"] == 3
 
 
 def test_orchestrator_with_failing_plugin():
@@ -240,8 +240,8 @@ def test_orchestrator_with_failing_plugin():
     orch = EvaluationOrchestrator()
     report = orch.run_evaluation(agent, ["failing_plugin"])
 
-    assert report.plugin_results["failing_plugin"]["total"] == 1
-    assert report.plugin_results["failing_plugin"]["passed"] == 0
+    assert report.evaluator_results["failing_plugin"]["total"] == 1
+    assert report.evaluator_results["failing_plugin"]["passed"] == 0
 
 
 def test_orchestrator_multi_plugin():
@@ -253,13 +253,13 @@ def test_orchestrator_multi_plugin():
     orch = EvaluationOrchestrator()
     report = orch.run_evaluation(agent, ["mock_plugin", "failing_plugin"])
 
-    assert report.summary["num_plugins"] == 2
+    assert report.summary["num_evaluators"] == 2
     assert report.summary["total_tasks"] == 4
 
 
 def test_task_queue_basic():
     queue = TaskQueue()
-    task_id = queue.enqueue({"test": "data"}, plugin_name="test")
+    task_id = queue.enqueue({"test": "data"}, evaluator_name="test")
     assert queue.size() == 1
     assert queue.total() == 1
 
@@ -346,10 +346,10 @@ def test_plugin_config_is_passed_to_setup():
     report = orch.run_evaluation(
         agent,
         ["config_plugin"],
-        plugin_configs={"config_plugin": {"value": "expected"}},
+        evaluator_configs={"config_plugin": {"value": "expected"}},
     )
 
-    assert report.plugin_results["config_plugin"]["passed"] == 1
+    assert report.evaluator_results["config_plugin"]["passed"] == 1
     assert report.task_results["config_plugin"][0]["raw_score"] == {"output": "expected"}
 
 
@@ -389,7 +389,7 @@ def test_task_results_are_serialized_and_restored():
     restored = EvaluationReport.from_dict(report.to_dict())
 
     assert len(restored.task_results["mock_plugin"]) == 3
-    assert restored.task_results["mock_plugin"][0]["plugin_name"] == "mock_plugin"
+    assert restored.task_results["mock_plugin"][0]["evaluator_name"] == "mock_plugin"
 
 
 def test_orchestrator_retries_failed_tasks_before_scoring_failure():
@@ -420,9 +420,9 @@ def test_evaluation_report():
             "total_failed": 3,
             "pass_rate": 0.7,
             "dimensions": {"accuracy": 0.8, "speed": 0.7},
-            "num_plugins": 2,
+            "num_evaluators": 2,
         },
-        plugin_results={
+        evaluator_results={
             "plugin_a": {"score": 0.8, "passed": 4, "total": 5},
             "plugin_b": {"score": 0.7, "passed": 3, "total": 5},
         },
@@ -441,8 +441,8 @@ def test_evaluation_report():
     assert restored.summary["overall_score"] == 0.75
 
 
-@register_plugin
-class HeavyPlugin(BasePlugin):
+@register_evaluator
+class HeavyPlugin(BaseEvaluator):
     name = "heavy_plugin"
     evaluation_type = EvaluationType.BENCHMARK
     supported_dimensions = ["knowledge"]
@@ -458,7 +458,7 @@ class HeavyPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=1.0,
             raw_score={},
@@ -470,8 +470,8 @@ class HeavyPlugin(BasePlugin):
         )
 
 
-@register_plugin
-class LightPlugin(BasePlugin):
+@register_evaluator
+class LightPlugin(BaseEvaluator):
     name = "light_plugin"
     evaluation_type = EvaluationType.BENCHMARK
     supported_dimensions = ["knowledge"]
@@ -487,7 +487,7 @@ class LightPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=0.0,
             raw_score={},
@@ -499,8 +499,8 @@ class LightPlugin(BasePlugin):
         )
 
 
-@register_plugin
-class DimensionPlugin(BasePlugin):
+@register_evaluator
+class DimensionPlugin(BaseEvaluator):
     name = "dimension_plugin"
     evaluation_type = EvaluationType.DYNAMIC
     supported_dimensions = ["planning", "tool_calling"]
@@ -516,7 +516,7 @@ class DimensionPlugin(BasePlugin):
 
     def evaluate(self, task, output, context):
         return EvalResult(
-            plugin_name=self.name,
+            evaluator_name=self.name,
             evaluation_type=self.evaluation_type,
             score=0.5,
             raw_score={},

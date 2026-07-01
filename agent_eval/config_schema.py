@@ -22,7 +22,7 @@ VALID_ORCHESTRATOR_KEYS: Set[str] = {
     "queue_backend", "storage", "log_level",
 }
 
-VALID_PLUGIN_KEYS: Set[str] = {
+VALID_EVALUATOR_KEYS: Set[str] = {
     "enabled", "type", "module", "judges", "test_cases",
     "dataset", "subset", "sample_count", "scenario_file",
     "threshold", "timeout", "parallel", "attack_types",
@@ -136,7 +136,7 @@ def validate_config(raw: Dict[str, Any]) -> ValidationResult:
         return ValidationResult(valid=False, errors=errors)
 
     # Top-level keys
-    valid_top_keys = {"orchestrator", "agent", "plugins", "eval_config", "report"}
+    valid_top_keys = {"orchestrator", "agent", "evaluators", "eval_config", "report"}
     for key in raw:
         if key not in valid_top_keys:
             errors.append(ConfigError(
@@ -195,19 +195,19 @@ def validate_config(raw: Dict[str, Any]) -> ValidationResult:
     if agent and not isinstance(agent, dict):
         errors.append(ConfigError(path="agent", message="Must be a mapping"))
 
-    # Plugins
-    plugins = raw.get("plugins", {})
-    if plugins and not isinstance(plugins, dict):
-        errors.append(ConfigError(path="plugins", message="Must be a mapping"))
-    elif isinstance(plugins, dict):
-        for pname, pcfg in plugins.items():
+    # Evaluators
+    evaluators = raw.get("evaluators", {})
+    if evaluators and not isinstance(evaluators, dict):
+        errors.append(ConfigError(path="evaluators", message="Must be a mapping"))
+    elif isinstance(evaluators, dict):
+        for pname, pcfg in evaluators.items():
             if not isinstance(pcfg, dict):
-                warnings.append(f"Plugin '{pname}' has non-dict config, treating as enabled={bool(pcfg)}")
+                warnings.append(f"Evaluator '{pname}' has non-dict config, treating as enabled={bool(pcfg)}")
                 continue
             for key in pcfg:
-                if key not in VALID_PLUGIN_KEYS:
-                    # Plugin-specific keys are allowed but warned
-                    known_plugin_keys = {
+                if key not in VALID_EVALUATOR_KEYS:
+                    # Evaluator-specific keys are allowed but warned
+                    known_evaluator_keys = {
                         "mmlu": {"subset", "sample_count", "seed"},
                         "humaneval": {"dataset", "sample_count", "timeout", "language"},
                         "gsm8k": {"sample_count", "seed"},
@@ -218,11 +218,11 @@ def validate_config(raw: Dict[str, Any]) -> ValidationResult:
                         "injection": {"attack_types"},
                         "bias": {"categories"},
                     }
-                    plugin_valid_keys = known_plugin_keys.get(pname, set())
-                    all_valid = VALID_PLUGIN_KEYS | plugin_valid_keys
+                    evaluator_valid_keys = known_evaluator_keys.get(pname, set())
+                    all_valid = VALID_EVALUATOR_KEYS | evaluator_valid_keys
                     if key not in all_valid:
                         warnings.append(
-                            f"Plugin '{pname}' has unknown key '{key}'. "
+                            f"Evaluator '{pname}' has unknown key '{key}'. "
                             + _suggest(key, all_valid)
                         )
 

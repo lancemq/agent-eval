@@ -28,7 +28,7 @@ export function LivePage() {
 
     const source = new EventSource(`/api/runs/${runId}/events`)
     source.onmessage = (message) => setEvents((items) => [...items, JSON.parse(message.data)])
-    const knownEvents = ['run_queued', 'evaluation_start', 'plugin_setup', 'task_generated', 'task_execute', 'task_evaluate', 'task_complete', 'task_failed', 'plugin_teardown', 'evaluation_complete', 'evaluation_failed']
+    const knownEvents = ['run_queued', 'evaluation_start', 'evaluator_setup', 'task_generated', 'task_execute', 'task_evaluate', 'task_complete', 'task_failed', 'evaluator_teardown', 'evaluation_complete', 'evaluation_failed']
     knownEvents.forEach((name) => source.addEventListener(name, (message) => setEvents((items) => [...items, JSON.parse((message as MessageEvent).data)])))
 
     const interval = window.setInterval(async () => {
@@ -49,7 +49,7 @@ export function LivePage() {
   return (
     <section>
       <div className="page-header">
-        <h2>运行监测</h2>
+        <h2>实验监测</h2>
         {runId && <span className={`status ${run?.status}`}>{run?.status || 'loading'}</span>}
       </div>
 
@@ -63,7 +63,7 @@ export function LivePage() {
           </div>
           <div className="card">
             <div className="progress"><span style={{ width: `${percent}%` }} /></div>
-            <p>{percent}% · 当前插件：{run?.current_plugin || '-'}</p>
+            <p>{percent}% · 当前评估器：{run?.current_evaluator || '-'}</p>
             {run?.error && <p className="error">{run.error}</p>}
             {run?.report_id && (
               <div className="actions-inline" style={{ marginTop: 8 }}>
@@ -76,12 +76,12 @@ export function LivePage() {
         </>
       ) : (
         <div className="card">
-          <h3>最近运行记录</h3>
+          <h3>最近实验记录</h3>
           {recentRuns.length === 0 ? (
-            <p className="muted empty-hint">暂无运行记录，请先新建评测。</p>
+            <p className="muted empty-hint">暂无实验记录，请先新建实验。</p>
           ) : (
             <table>
-              <thead><tr><th>Run ID</th><th>Agent</th><th>时间</th><th>分数</th><th>操作</th></tr></thead>
+              <thead><tr><th>实验 ID</th><th>Agent</th><th>时间</th><th>分数</th><th>操作</th></tr></thead>
               <tbody>
                 {recentRuns.map((r) => (
                   <tr key={r.run_id}>

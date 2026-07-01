@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 type Props = {
   open: boolean
@@ -25,7 +26,7 @@ export function Modal({ open, title, onClose, children, width }: Props) {
 
   if (!open) return null
 
-  return (
+  return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" style={width ? { maxWidth: width } : undefined} onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
@@ -34,6 +35,7 @@ export function Modal({ open, title, onClose, children, width }: Props) {
         </div>
         <div className="modal-body">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

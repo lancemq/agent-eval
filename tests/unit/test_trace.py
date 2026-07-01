@@ -13,7 +13,8 @@ from agent_eval.trace.normalizers import (
     OpenTelemetryNormalizer, LangSmithNormalizer,
     get_normalizer, auto_detect_normalizer, list_normalizers,
 )
-from agent_eval.trace.task_generator import TaskGenerator, DatasetBuilder
+from agent_eval.trace.task_generator import TaskGenerator
+from agent_eval.datasets import DatasetBuilder
 from agent_eval.trace.analyzer import TraceAnalyzer
 from agent_eval.trace.replay import TracePlayer
 
@@ -205,7 +206,7 @@ class TestNormalizers:
         n = SelfEvalNormalizer()
         record = n.normalize({
             "task_id": "task_001",
-            "plugin_name": "mmlu",
+            "evaluator_name": "mmlu",
             "evaluation_type": "benchmark",
             "score": 0.85,
             "passed": True,
@@ -269,7 +270,7 @@ class TestNormalizers:
         n2 = auto_detect_normalizer({"child_runs": []})
         assert isinstance(n2, LangSmithNormalizer)
 
-        n3 = auto_detect_normalizer({"plugin_name": "mmlu", "evaluation_type": "benchmark"})
+        n3 = auto_detect_normalizer({"evaluator_name": "mmlu", "evaluation_type": "benchmark"})
         assert isinstance(n3, SelfEvalNormalizer)
 
     def test_get_normalizer(self):

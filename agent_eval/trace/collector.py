@@ -209,7 +209,7 @@ class TraceCollector:
                 with open(os.path.join(results_dir, fname)) as f:
                     report = json.load(f)
                 task_results = report.get("task_results", {})
-                for plugin_name, results in task_results.items():
+                for evaluator_name, results in task_results.items():
                     for r in results:
                         if r.get("score", 0) >= min_score:
                             r["agent_name"] = report.get("agent", {}).get("name", "unknown")

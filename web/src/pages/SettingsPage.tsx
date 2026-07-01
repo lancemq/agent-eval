@@ -134,7 +134,7 @@ export function SettingsPage() {
           </div>
           <div className="card form">
             <h3>评测模型配置</h3>
-            <p className="muted">Scorer（LLM-as-Judge）使用的评测大模型。保存到 .agent-eval/eval-model.json；API Key 默认脱敏，留空不覆盖。</p>
+            <p className="muted">打分器（LLM-as-Judge）使用的评测大模型。保存到 .agent-eval/eval-model.json；API Key 默认脱敏，留空不覆盖。</p>
             <label>模型</label>
             <input value={settings.eval_model.model} onChange={(event) => updateEvalModel({ model: event.target.value })} placeholder="gpt-4o-mini" />
             <label>API Key</label>

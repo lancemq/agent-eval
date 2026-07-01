@@ -40,37 +40,37 @@ class EventBus:
             "evaluation_start",
             {"actual_run_id": context.run_id, "agent_name": context.metadata.get("agent_name")},
         ))
-        orchestrator.hooks.register("plugin_setup", lambda plugin: self.publish(
+        orchestrator.hooks.register("evaluator_setup", lambda evaluator: self.publish(
             run_id,
-            "plugin_setup",
-            {"plugin": plugin.name},
+            "evaluator_setup",
+            {"evaluator": evaluator.name},
         ))
-        orchestrator.hooks.register("plugin_teardown", lambda plugin: self.publish(
+        orchestrator.hooks.register("evaluator_teardown", lambda evaluator: self.publish(
             run_id,
-            "plugin_teardown",
-            {"plugin": plugin.name},
+            "evaluator_teardown",
+            {"evaluator": evaluator.name},
         ))
-        orchestrator.hooks.register("task_generated", lambda plugin, tasks: self.publish(
+        orchestrator.hooks.register("task_generated", lambda evaluator, tasks: self.publish(
             run_id,
             "task_generated",
-            {"plugin": plugin.name, "count": len(tasks)},
+            {"evaluator": evaluator.name, "count": len(tasks)},
         ))
-        orchestrator.hooks.register("task_execute", lambda plugin, task: self.publish(
+        orchestrator.hooks.register("task_execute", lambda evaluator, task: self.publish(
             run_id,
             "task_execute",
-            {"plugin": plugin.name, "task": _safe_task(task)},
+            {"evaluator": evaluator.name, "task": _safe_task(task)},
         ))
-        orchestrator.hooks.register("task_evaluate", lambda plugin, task, output: self.publish(
+        orchestrator.hooks.register("task_evaluate", lambda evaluator, task, output: self.publish(
             run_id,
             "task_evaluate",
-            {"plugin": plugin.name, "task": _safe_task(task)},
+            {"evaluator": evaluator.name, "task": _safe_task(task)},
         ))
         orchestrator.hooks.register("task_complete", lambda task_id, result: self.publish(
             run_id,
             "task_complete",
             {
                 "task_id": task_id,
-                "plugin": result.plugin_name,
+                "evaluator": result.evaluator_name,
                 "score": result.score,
                 "passed": result.passed,
                 "error": result.error,
